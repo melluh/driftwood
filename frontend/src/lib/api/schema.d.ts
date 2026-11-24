@@ -179,6 +179,27 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/media/{media_type}/{media_id}/releases': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Media Releases
+		 * @description Torrents the configured indexers have for this title. Indexer failures are
+		 *     reported in `failures` rather than failing the request.
+		 */
+		get: operations['media_releases_api_media__media_type___media_id__releases_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -245,6 +266,13 @@ export interface components {
 		 * @enum {string}
 		 */
 		IndexStatus: 'ready' | 'building' | 'missing';
+		/** IndexerFailure */
+		IndexerFailure: {
+			/** Indexer */
+			indexer: string;
+			/** Message */
+			message: string;
+		};
 		/** MediaDetails */
 		MediaDetails: {
 			media_type: components['schemas']['MediaType'];
@@ -321,11 +349,57 @@ export interface components {
 		 * @enum {string}
 		 */
 		MediaType: 'movie' | 'tv';
+		/** ReleaseSearch */
+		ReleaseSearch: {
+			/** Query */
+			query: string;
+			/** Indexers */
+			indexers: string[];
+			/** Releases */
+			releases: components['schemas']['TorrentRelease'][];
+			/** Failures */
+			failures: components['schemas']['IndexerFailure'][];
+		};
 		/** SearchStatus */
 		SearchStatus: {
 			status: components['schemas']['IndexStatus'];
 			/** Entries */
 			entries: number;
+		};
+		/**
+		 * TorrentRelease
+		 * @description A torrent an indexer found for a title.
+		 */
+		TorrentRelease: {
+			/** Indexer */
+			indexer: string;
+			/** Guid */
+			guid: string;
+			/** Title */
+			title: string;
+			/** Details Url */
+			details_url: string | null;
+			/** Size */
+			size: number | null;
+			/** Published */
+			published: string | null;
+			/** Categories */
+			categories: number[];
+			/** Seeders */
+			seeders: number | null;
+			/** Leechers */
+			leechers: number | null;
+			/** Grabs */
+			grabs: number | null;
+			/**
+			 * Freeleech
+			 * @default false
+			 */
+			freeleech: boolean;
+			/** Imdb Id */
+			imdb_id: string | null;
+			/** Genres */
+			genres: string[];
 		};
 		/** ValidationError */
 		ValidationError: {
@@ -355,10 +429,13 @@ export type HttpValidationError = components['schemas']['HTTPValidationError'];
 export type HomePage = components['schemas']['HomePage'];
 export type HomeRow = components['schemas']['HomeRow'];
 export type IndexStatus = components['schemas']['IndexStatus'];
+export type IndexerFailure = components['schemas']['IndexerFailure'];
 export type MediaDetails = components['schemas']['MediaDetails'];
 export type MediaSummary = components['schemas']['MediaSummary'];
 export type MediaType = components['schemas']['MediaType'];
+export type ReleaseSearch = components['schemas']['ReleaseSearch'];
 export type SearchStatus = components['schemas']['SearchStatus'];
+export type TorrentRelease = components['schemas']['TorrentRelease'];
 export type ValidationError = components['schemas']['ValidationError'];
 export type $defs = Record<string, never>;
 export interface operations {
@@ -559,6 +636,38 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['MediaDetails'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	media_releases_api_media__media_type___media_id__releases_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				media_type: components['schemas']['MediaType'];
+				media_id: number;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ReleaseSearch'];
 				};
 			};
 			/** @description Validation Error */

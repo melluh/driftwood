@@ -31,3 +31,25 @@ export function alternateTitle(media: {
 }): string | null {
 	return media.original_title && media.original_title !== media.title ? media.original_title : null;
 }
+
+const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'];
+
+/** Binary-prefixed size, e.g. `1.4 GB`. */
+export function formatBytes(bytes: number | null | undefined): string | null {
+	if (bytes == null || bytes < 0) return null;
+	let value = bytes;
+	let unit = 0;
+	while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
+		value /= 1024;
+		unit += 1;
+	}
+	return `${value.toFixed(unit && value < 10 ? 1 : 0)} ${BYTE_UNITS[unit]}`;
+}
+
+/** A timestamp as a short local date, e.g. `25 Oct 2021`. */
+export function formatTimestamp(iso: string | null | undefined): string | null {
+	if (!iso) return null;
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return null;
+	return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}

@@ -17,9 +17,13 @@ from driftwood.auth.router import (
     require_user,
 )
 from driftwood.auth.router import router as auth_router
-from driftwood.config import get_settings
+from driftwood.config import IndexersSettings, get_settings
 from driftwood.db import Database
+from driftwood.indexers import INDEXERS
+from driftwood.indexers.base import Indexer
+from driftwood.indexers.manager import IndexerManager
 from driftwood.media.home import HomeService
+from driftwood.media.releases import ReleaseService
 from driftwood.media.router import router as media_router
 from driftwood.media.service import MediaService
 from driftwood.titles.store import TitleIndexStore
@@ -27,6 +31,19 @@ from driftwood.tmdb.client import TmdbClient
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger(__name__)
+
+
+def create_indexers(settings: IndexersSettings) -> list[Indexer]:
+    configured = {"torrentleech": settings.torrentleech}
+    indexers = []
+    for indexer_id, indexer_settings in configured.items():
+        if indexer_settings is None or not indexer_settings.enabled:
+            continue
+        indexers.append(
+            INDEXERS[indexer_id].create(indexer_settings, data_directory=settings.directory)
+        )
+    log.info("Indexers enabled: %s", ", ".join(i.id for i in indexers) or "none")
+    return indexers
 
 
 @contextlib.asynccontextmanager
@@ -46,11 +63,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.auth = AuthState(settings.auth, provider)
 
     titles = TitleIndexStore(settings.title_index)
+    indexers = IndexerManager(
+        create_indexers(settings.indexers),
+        timeout_seconds=settings.indexers.search_timeout_seconds,
+    )
     limits = httpx.Limits(max_connections=20, max_keepalive_connections=20)
     async with httpx.AsyncClient(timeout=10, limits=limits) as http:
         tmdb = TmdbClient(http, settings.tmdb)
         app.state.media_service = MediaService(titles, tmdb)
         app.state.home_service = HomeService(tmdb)
+        app.state.release_service = ReleaseService(
+            tmdb, indexers, cache_ttl_seconds=settings.indexers.results_cache_ttl_seconds
+        )
         index_task = asyncio.create_task(titles.run(), name="title-index")
         try:
             yield
@@ -58,6 +82,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             index_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await index_task
+            await indexers.aclose()
             await database.dispose()
 
 

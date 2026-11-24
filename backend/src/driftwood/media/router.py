@@ -3,11 +3,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 
 from driftwood.media.home import HomeService
+from driftwood.media.releases import ReleaseService
 from driftwood.media.schemas import (
     HomePage,
     MediaDetails,
     MediaSummary,
     MediaType,
+    ReleaseSearch,
     SearchStatus,
 )
 from driftwood.media.service import MediaService
@@ -23,8 +25,13 @@ def get_home_service(request: Request) -> HomeService:
     return request.app.state.home_service
 
 
+def get_release_service(request: Request) -> ReleaseService:
+    return request.app.state.release_service
+
+
 MediaServiceDep = Annotated[MediaService, Depends(get_media_service)]
 HomeServiceDep = Annotated[HomeService, Depends(get_home_service)]
+ReleaseServiceDep = Annotated[ReleaseService, Depends(get_release_service)]
 
 
 @router.get("/home")
@@ -63,3 +70,19 @@ async def media_details(
     if details is None:
         raise HTTPException(status_code=404, detail="Media not found")
     return details
+
+
+@router.get("/media/{media_type}/{media_id}/releases")
+async def media_releases(
+    service: ReleaseServiceDep,
+    media_type: MediaType,
+    media_id: Annotated[int, Path(gt=0)],
+) -> ReleaseSearch:
+    """
+    Torrents the configured indexers have for this title. Indexer failures are
+    reported in `failures` rather than failing the request.
+    """
+    result = await service.search(media_type, media_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Media not found")
+    return result

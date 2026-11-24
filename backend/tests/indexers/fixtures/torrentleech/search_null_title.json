@@ -1,0 +1,27 @@
+{
+  "numFound": 3,
+  "torrentList": [
+    {
+      "fid": 250001,
+      "filename": "Some.Show.S01E01.1080p.WEB.h264-GRP.torrent",
+      "name": null,
+      "categoryID": 32,
+      "tags": ["Comedy"],
+      "seeders": 7,
+      "leechers": 2,
+      "completed": 30,
+      "size": 1500000000,
+      "addedTimestamp": "2022-02-02 10:00:00",
+      "download_multiplier": 1
+    },
+    {
+      "filename": "missing.fid.torrent",
+      "name": "Row without fid"
+    },
+    {
+      "fid": 250003,
+      "name": null,
+      "categoryID": 26
+    }
+  ]
+}

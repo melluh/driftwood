@@ -66,6 +66,25 @@ Known limitation: TMDB's exports carry only *original* titles, so a translated t
 
 Benchmark the index against the real export with `uv run python scripts/bench_index.py`.
 
+## Torrent indexers
+
+`backend/src/driftwood/indexers/` searches torrent indexers behind one interface
+(`SearchQuery` → `list[Release]`), following [docs/indexer-design.md](docs/indexer-design.md).
+TorrentLeech is the first one. Enable it in `backend/.env`:
+
+```sh
+DRIFTWOOD_INDEXERS__TORRENTLEECH__USERNAME=...
+DRIFTWOOD_INDEXERS__TORRENTLEECH__PASSWORD=...
+# DRIFTWOOD_INDEXERS__TORRENTLEECH__ALT_2FA_TOKEN=...   # if 2FA is on (Site Profile → Alt 2FA Token)
+# DRIFTWOOD_INDEXERS__TORRENTLEECH__TIMEZONE=Europe/Amsterdam   # your TL profile's timezone
+```
+
+Set "Torrents per page" to 100 in your TorrentLeech profile; results aren't paginated. Session
+cookies are kept in `backend/data/indexers/` so restarts don't log in again, and requests are
+spaced 4.1 s apart. `GET /api/media/{type}/{id}/releases` searches every enabled indexer for a
+title (movies by IMDb id, series by title); each media page has a debug "Find torrents" button
+that calls it.
+
 ## Development
 
 ```sh

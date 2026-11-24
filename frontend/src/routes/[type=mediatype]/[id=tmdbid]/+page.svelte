@@ -3,6 +3,7 @@
 	import MediaFacts from '#lib/components/media/MediaFacts.svelte';
 	import MediaHero from '#lib/components/media/MediaHero.svelte';
 	import PageSection from '#lib/components/layout/PageSection.svelte';
+	import ReleaseDebugPanel from '#lib/components/releases/ReleaseDebugPanel.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -28,6 +29,12 @@
 		<CastList cast={media.cast} />
 	</PageSection>
 {/if}
+
+<PageSection title="Releases (debug)">
+	{#key `${media.media_type}/${media.id}`}
+		<ReleaseDebugPanel mediaType={media.media_type} mediaId={media.id} />
+	{/key}
+</PageSection>
 
 <style>
 	.overview {

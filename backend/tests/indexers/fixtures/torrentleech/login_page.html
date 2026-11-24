@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html><body>
+<div class="login-container">
+  <h2>Login</h2>
+  <form name="login-form" method="post" action="/user/account/login/">
+    <input type="hidden" name="_csrf" value="token123">
+    <input type="text" name="username" value="">
+    <input type="password" name="password">
+    <input type="text" name="alt2FAToken" value="">
+    <input type="checkbox" name="remember_me" value="on" checked>
+    <input type="checkbox" name="unchecked_box" value="1">
+    <input type="text" name="disabled_field" value="x" disabled>
+    <button type="submit">Log in</button>
+  </form>
+</div>
+</body></html>

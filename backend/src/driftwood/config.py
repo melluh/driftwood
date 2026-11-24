@@ -4,6 +4,8 @@ from pathlib import Path
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from driftwood.indexers.torrentleech import TorrentLeechSettings
+
 
 class TmdbSettings(BaseModel):
     api_key: str = ""
@@ -49,6 +51,19 @@ class TitleIndexSettings(BaseModel):
     """How old the on-disk index may get before startup refreshes it immediately."""
 
     refresh_interval_hours: float = 24.0
+
+
+class IndexersSettings(BaseModel):
+    directory: Path = Path("data/indexers")
+    """Per-indexer state, such as persisted session cookies."""
+
+    search_timeout_seconds: float = 60.0
+
+    results_cache_ttl_seconds: float = 600.0
+    """How long a title's release search is reused, to go easy on the indexers."""
+
+    torrentleech: TorrentLeechSettings | None = None
+    """Set `DRIFTWOOD_INDEXERS__TORRENTLEECH__USERNAME` / `__PASSWORD` to enable."""
 
 
 class DatabaseSettings(BaseModel):
@@ -101,6 +116,7 @@ class Settings(BaseSettings):
 
     tmdb: TmdbSettings = TmdbSettings()
     title_index: TitleIndexSettings = TitleIndexSettings()
+    indexers: IndexersSettings = IndexersSettings()
     database: DatabaseSettings = DatabaseSettings()
     auth: AuthSettings = AuthSettings()
 

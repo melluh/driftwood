@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -79,3 +80,38 @@ class HomePage(Schema):
     featured: list[MediaSummary]
     """Large, rotating highlights for the top of the page (all have a backdrop)."""
     rows: list[HomeRow]
+
+
+class TorrentRelease(Schema):
+    """A torrent an indexer found for a title."""
+
+    indexer: str
+    guid: str
+    title: str
+    details_url: str | None = None
+    size: int | None = None
+    """Bytes."""
+    published: datetime | None = None
+    categories: list[int] = Field(default_factory=list)
+    """Torznab category ids."""
+    seeders: int | None = None
+    leechers: int | None = None
+    grabs: int | None = None
+    freeleech: bool = False
+    imdb_id: str | None = None
+    genres: list[str] = Field(default_factory=list)
+
+
+class IndexerFailure(Schema):
+    indexer: str
+    message: str
+
+
+class ReleaseSearch(Schema):
+    query: str
+    """What was sent to the indexers, for debugging."""
+    indexers: list[str]
+    """Ids of the indexers searched; empty when none are configured."""
+    releases: list[TorrentRelease]
+    """Most seeded first."""
+    failures: list[IndexerFailure]

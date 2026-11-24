@@ -22,5 +22,7 @@ export type {
 	MediaDetails,
 	MediaSummary,
 	MediaType,
-	SearchStatus
+	ReleaseSearch,
+	SearchStatus,
+	TorrentRelease
 } from './schema';

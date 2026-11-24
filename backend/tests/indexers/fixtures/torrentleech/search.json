@@ -1,0 +1,47 @@
+{
+  "numFound": 3,
+  "torrentList": [
+    {
+      "fid": 240001,
+      "filename": "The.Shawshank.Redemption.1994.1080p.BluRay.x264-GRP.torrent",
+      "name": "[REQ] The.Shawshank.Redemption.1994.1080p.BluRay.x264-GRP",
+      "categoryID": 14,
+      "tags": ["Drama", "Crime", "FREELEECH", "nonscene"],
+      "imdbID": "tt0111161",
+      "seeders": 120,
+      "leechers": 3,
+      "completed": 4567,
+      "size": 12345678901,
+      "addedTimestamp": "2021-10-25 02:18:31",
+      "download_multiplier": 0
+    },
+    {
+      "fid": 240002,
+      "filename": "The.Shawshank.Redemption.1994.2160p.UHD.BluRay.x265-GRP.torrent",
+      "name": "The.Shawshank.Redemption.1994.2160p.UHD.BluRay.x265-GRP",
+      "categoryID": 47,
+      "tags": ["Drama"],
+      "imdbID": "tt0111161",
+      "seeders": 40,
+      "leechers": 1,
+      "completed": 900,
+      "size": 54321098765,
+      "addedTimestamp": "2023-01-02 13:00:00",
+      "download_multiplier": 1
+    },
+    {
+      "fid": 240003,
+      "filename": "The.Shawshank.Redemption.1994.720p.WEB.h264-GRP.torrent",
+      "name": "The.Shawshank.Redemption.1994.720p.WEB.h264-GRP",
+      "categoryID": 37,
+      "tags": [],
+      "imdbID": "",
+      "seeders": 5,
+      "leechers": 0,
+      "completed": 10,
+      "size": 2147483648,
+      "addedTimestamp": "2024-06-30 23:59:59",
+      "download_multiplier": 1
+    }
+  ]
+}
