@@ -40,8 +40,6 @@
 		role="region"
 		aria-roledescription="carousel"
 		aria-label="Featured"
-		onmouseenter={() => rotation.setHovered(true)}
-		onmouseleave={() => rotation.setHovered(false)}
 		onfocusin={() => rotation.setFocused(true)}
 		onfocusout={handleFocusOut}
 	>

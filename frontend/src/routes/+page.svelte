@@ -21,7 +21,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-8);
-		margin-top: calc(-1 * var(--space-12));
+		margin-top: calc(-1 * var(--space-4));
 		padding-bottom: var(--space-12);
 	}
 </style>
