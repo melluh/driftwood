@@ -5,7 +5,7 @@
 	import { SearchOverlayState, setSearchOverlay } from '#lib/search/overlay.svelte.ts';
 	import type { LayoutProps } from './$types';
 
-	let { children }: LayoutProps = $props();
+	let { children, data }: LayoutProps = $props();
 
 	const overlay = setSearchOverlay(new SearchOverlayState());
 </script>
@@ -14,12 +14,14 @@
 	<title>Driftwood</title>
 </svelte:head>
 
-<AppHeader onsearch={overlay.open} />
+{#if data.user}
+	<AppHeader user={data.user} onsearch={overlay.open} />
+{/if}
 
 <main>
 	{@render children()}
 </main>
 
-{#if overlay.isOpen}
+{#if data.user && overlay.isOpen}
 	<SearchOverlay onclose={overlay.close} />
 {/if}

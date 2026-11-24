@@ -51,6 +51,46 @@ class TitleIndexSettings(BaseModel):
     refresh_interval_hours: float = 24.0
 
 
+class DatabaseSettings(BaseModel):
+    url: str = "sqlite+aiosqlite:///data/driftwood.db"
+    """SQLAlchemy async database URL. Migrations run automatically on startup."""
+
+
+class AuthSettings(BaseModel):
+    issuer_url: str = ""
+    """OpenID Connect issuer, e.g. `https://accounts.google.com`. Its
+    `/.well-known/openid-configuration` is used to discover the endpoints."""
+
+    client_id: str = ""
+    client_secret: str = ""
+    """Leave empty for a public client (PKCE only)."""
+
+    scopes: str = "openid email profile"
+
+    provider_name: str = "SSO"
+    """Shown on the login button: "Continue with <provider_name>"."""
+
+    public_url: str = "http://localhost:5173"
+    """Origin the browser uses to reach Driftwood (frontend and `/api`). The OAuth
+    redirect URI registered with the provider is `<public_url>/api/auth/callback`."""
+
+    secret_key: str = ""
+    """Signs the short-lived cookie that carries OAuth state during login. A random
+    key is generated per process when unset, which breaks logins in flight across
+    restarts and multiple workers."""
+
+    session_ttl_days: float = 30
+    """Sessions expire after this long without use."""
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.issuer_url and self.client_id)
+
+    @property
+    def secure_cookies(self) -> bool:
+        return self.public_url.startswith("https://")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="DRIFTWOOD_",
@@ -61,6 +101,8 @@ class Settings(BaseSettings):
 
     tmdb: TmdbSettings = TmdbSettings()
     title_index: TitleIndexSettings = TitleIndexSettings()
+    database: DatabaseSettings = DatabaseSettings()
+    auth: AuthSettings = AuthSettings()
 
 
 @lru_cache

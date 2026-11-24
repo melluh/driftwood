@@ -1,8 +1,10 @@
 <script lang="ts">
+	import type { CurrentUser } from '#lib/api/client.ts';
 	import Logo from '../brand/Logo.svelte';
 	import SearchButton from '../search/SearchButton.svelte';
+	import UserMenu from '../user/UserMenu.svelte';
 
-	let { onsearch }: { onsearch: () => void } = $props();
+	let { user, onsearch }: { user: CurrentUser; onsearch: () => void } = $props();
 
 	let scrollY = $state(0);
 	const scrolled = $derived(scrollY > 8);
@@ -12,7 +14,10 @@
 
 <header class:scrolled>
 	<Logo />
-	<SearchButton onclick={onsearch} />
+	<div class="actions">
+		<SearchButton onclick={onsearch} />
+		<UserMenu {user} />
+	</div>
 </header>
 
 <style>
@@ -36,5 +41,11 @@
 		background: oklch(from var(--color-bg) l c h / 0.88);
 		backdrop-filter: blur(12px);
 		box-shadow: 0 1px 0 var(--color-border);
+	}
+
+	.actions {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
 	}
 </style>

@@ -4,6 +4,106 @@
  */
 
 export interface paths {
+	'/api/auth/config': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Auth Config
+		 * @description Public: what the login screen needs to know.
+		 */
+		get: operations['auth_config_api_auth_config_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/auth/backdrop': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Login Backdrop
+		 * @description Public: TMDB poster paths of popular titles, decoration for the login screen.
+		 *
+		 *     Deliberately just image paths (no titles, ids or anything user-specific),
+		 *     from the same cached lists as the home page. Empty when TMDB is unreachable.
+		 */
+		get: operations['login_backdrop_api_auth_backdrop_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/auth/login': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Login
+		 * @description Start the OAuth flow: redirects the browser to the provider's sign-in page.
+		 */
+		get: operations['login_api_auth_login_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/auth/me': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Me
+		 * @description The signed-in user; 401 when signed out.
+		 */
+		get: operations['me_api_auth_me_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/auth/logout': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Logout */
+		post: operations['logout_api_auth_logout_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/home': {
 		parameters: {
 			query?: never;
@@ -83,6 +183,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
 	schemas: {
+		/** AuthConfig */
+		AuthConfig: {
+			/** Provider Name */
+			provider_name: string;
+			/** Configured */
+			configured: boolean;
+		};
 		/** CastMember */
 		CastMember: {
 			/** Id */
@@ -93,6 +200,17 @@ export interface components {
 			character: string | null;
 			/** Profile Path */
 			profile_path: string | null;
+		};
+		/** CurrentUser */
+		CurrentUser: {
+			/** Id */
+			id: number;
+			/** Name */
+			name: string;
+			/** Email */
+			email: string | null;
+			/** Avatar Url */
+			avatar_url: string | null;
 		};
 		/** Genre */
 		Genre: {
@@ -229,7 +347,9 @@ export interface components {
 	headers: never;
 	pathItems: never;
 }
+export type AuthConfig = components['schemas']['AuthConfig'];
 export type CastMember = components['schemas']['CastMember'];
+export type CurrentUser = components['schemas']['CurrentUser'];
 export type Genre = components['schemas']['Genre'];
 export type HttpValidationError = components['schemas']['HTTPValidationError'];
 export type HomePage = components['schemas']['HomePage'];
@@ -242,6 +362,113 @@ export type SearchStatus = components['schemas']['SearchStatus'];
 export type ValidationError = components['schemas']['ValidationError'];
 export type $defs = Record<string, never>;
 export interface operations {
+	auth_config_api_auth_config_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['AuthConfig'];
+				};
+			};
+		};
+	};
+	login_backdrop_api_auth_backdrop_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': string[];
+				};
+			};
+		};
+	};
+	login_api_auth_login_get: {
+		parameters: {
+			query?: {
+				next?: string | null;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			307: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	me_api_auth_me_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['CurrentUser'];
+				};
+			};
+		};
+	};
+	logout_api_auth_logout_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+		};
+	};
 	home_api_home_get: {
 		parameters: {
 			query?: never;
