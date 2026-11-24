@@ -139,6 +139,16 @@ the penalties are configurable under `DRIFTWOOD_SELECTION__*` (see `selection/co
 `DRIFTWOOD_SELECTION__SUBTITLE_LANGUAGES='["en", "nl"]'`. Names and ISO codes both work; an empty
 list turns subtitle checks off.
 
+## Library
+
+Driftwood scans shared media roots and marks a title **Ready to play** when a matching file is present. Configure `DRIFTWOOD_LIBRARY__ROOTS` in `backend/.env` as a JSON list of roots, each with a unique `name`, an absolute `path`, and a `kind` of `movies` or `tv`. Example:
+
+```sh
+DRIFTWOOD_LIBRARY__ROOTS='[{"name":"movies","path":"/srv/movies","kind":"movies"},{"name":"tv","path":"/srv/tv","kind":"tv"}]'
+```
+
+Include a TMDB tag such as `[tmdbid-438631]`, `[tmdbid=438631]`, `[tmdb-438631]`, or `{tmdb-438631}` in the filename or a parent directory. TV filenames also need a season/episode pattern guessit recognises (such as `S01E02`); `Season 01` and `Specials` directories provide a fallback season. The scanner runs at startup and periodically, and a signed-in client can request a scan through `/api/library/scan`.
+
 ## Development
 
 ```sh

@@ -5,14 +5,18 @@
 	import MyListButton from '#lib/components/media/MyListButton.svelte';
 	import PageSection from '#lib/components/layout/PageSection.svelte';
 	import ReleaseDebugPanel from '#lib/components/releases/ReleaseDebugPanel.svelte';
+	import Chip from '#lib/components/ui/Chip.svelte';
+	import Icon from '#lib/components/ui/Icon.svelte';
 	import LinkButton from '#lib/components/ui/LinkButton.svelte';
 	import type { MediaSummary } from '#lib/api/client.ts';
+	import { readyLabel } from '#lib/library/library.ts';
 	import { watchHref } from '#lib/media/format.ts';
 	import { isSameMedia } from '#lib/my-list/my-list.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 	const media = $derived(data.media);
+	const availabilityLabel = $derived(readyLabel(media, data.availability));
 	// Resets when navigating to another title; toggling overrides it.
 	let inMyList = $derived(data.inMyList);
 
@@ -28,6 +32,11 @@
 <MediaHero {media}>
 	{#if media.overview}
 		<p class="overview">{media.overview}</p>
+	{/if}
+	{#if availabilityLabel}
+		<div class="availability">
+			<Chip tone="accent"><Icon name="check" />{availabilityLabel}</Chip>
+		</div>
 	{/if}
 	<div class="actions">
 		<LinkButton href={watchHref(media.media_type, media.id)} icon="play">Watch</LinkButton>
@@ -58,6 +67,10 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--space-3);
+		margin-top: var(--space-2);
+	}
+
+	.availability {
 		margin-top: var(--space-2);
 	}
 

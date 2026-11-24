@@ -1,7 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from driftwood.indexers.torrentleech import TorrentLeechSettings
@@ -72,6 +73,51 @@ class DatabaseSettings(BaseModel):
     """SQLAlchemy async database URL. Migrations run automatically on startup."""
 
 
+class LibraryRoot(BaseModel):
+    name: str = Field(max_length=64)
+    """Stable key stored in the database; file paths are relative to this root."""
+
+    path: Path
+    kind: Literal["movies", "tv"]
+
+
+class LibrarySettings(BaseModel):
+    roots: list[LibraryRoot] = Field(default_factory=list)
+    """Library roots, configured as a JSON list in DRIFTWOOD_LIBRARY__ROOTS."""
+
+    scan_interval_minutes: float = 30
+    video_extensions: frozenset[str] = frozenset(
+        {".mkv", ".mp4", ".m4v", ".avi", ".mov", ".ts", ".m2ts", ".webm", ".wmv"}
+    )
+    min_size_mb: float = 50
+    """Smaller video files are treated as samples and ignored."""
+    ignored_dirs: frozenset[str] = frozenset(
+        {
+            "extras",
+            "featurettes",
+            "behind the scenes",
+            "deleted scenes",
+            "interviews",
+            "scenes",
+            "shorts",
+            "trailers",
+            "sample",
+            "samples",
+            "other",
+        }
+    )
+    """Directory names (case-insensitive) whose contents are never scanned."""
+    missing_grace_days: float = 7
+    """How long missing files are retained before their rows are deleted."""
+
+    @model_validator(mode="after")
+    def unique_root_names(self) -> "LibrarySettings":
+        names = [root.name for root in self.roots]
+        if len(names) != len(set(names)):
+            raise ValueError("library root names must be unique")
+        return self
+
+
 class AuthSettings(BaseModel):
     issuer_url: str = ""
     """OpenID Connect issuer, e.g. `https://accounts.google.com`. Its
@@ -122,6 +168,7 @@ class Settings(BaseSettings):
 
     database: DatabaseSettings = DatabaseSettings()
     auth: AuthSettings = AuthSettings()
+    library: LibrarySettings = LibrarySettings()
 
 
 @lru_cache

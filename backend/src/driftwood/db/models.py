@@ -1,6 +1,9 @@
 from datetime import UTC, datetime
+from enum import StrEnum
 
 from sqlalchemy import (
+    JSON,
+    BigInteger,
     DateTime,
     ForeignKey,
     Index,
@@ -74,6 +77,52 @@ class UserSession(Base):
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
 
     user: Mapped[User] = relationship(lazy="joined")
+
+
+class MediaFileState(StrEnum):
+    present = "present"
+    missing = "missing"
+
+
+class MediaFile(Base):
+    __tablename__ = "media_files"
+    __table_args__ = (
+        UniqueConstraint("root", "path"),
+        Index("ix_media_files_state", "state"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    root: Mapped[str] = mapped_column(String(64))
+    path: Mapped[str] = mapped_column(String(4096))
+    size: Mapped[int] = mapped_column(BigInteger)
+    mtime_ns: Mapped[int] = mapped_column(BigInteger)
+    state: Mapped[str] = mapped_column(String(16))
+    missing_since: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    attributes: Mapped[dict[str, object]] = mapped_column(JSON)
+    probe: Mapped[dict[str, object] | None] = mapped_column(JSON)
+    first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+    links: Mapped[list["MediaFileLink"]] = relationship(
+        back_populates="file", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class MediaFileLink(Base):
+    __tablename__ = "media_file_links"
+    __table_args__ = (
+        UniqueConstraint("file_id", "media_type", "media_id", "season", "episode"),
+        Index("ix_media_file_links_media_type_media_id", "media_type", "media_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    file_id: Mapped[int] = mapped_column(ForeignKey("media_files.id", ondelete="CASCADE"))
+    media_type: Mapped[str] = mapped_column(String(8))
+    media_id: Mapped[int]
+    season: Mapped[int | None]
+    episode: Mapped[int | None]
+
+    file: Mapped[MediaFile] = relationship(back_populates="links")
 
 
 class MyListItem(Base):

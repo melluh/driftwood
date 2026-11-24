@@ -288,6 +288,57 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/library/status': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Library Status */
+		get: operations['library_status_api_library_status_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/library/scan': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Request Library Scan */
+		post: operations['request_library_scan_api_library_scan_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/library/{media_type}/{media_id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Library Availability */
+		get: operations['library_availability_api_library__media_type___media_id__get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -360,6 +411,57 @@ export interface components {
 			indexer: string;
 			/** Message */
 			message: string;
+		};
+		/** LibraryAvailability */
+		LibraryAvailability: {
+			/** Ready */
+			ready: boolean;
+			/** Files */
+			files: components['schemas']['LibraryFile'][];
+			/** Episodes */
+			episodes: components['schemas']['LibraryEpisode'][];
+		};
+		/** LibraryEpisode */
+		LibraryEpisode: {
+			/** Season */
+			season: number;
+			/** Episode */
+			episode: number;
+		};
+		/** LibraryFile */
+		LibraryFile: {
+			/** Id */
+			id: number;
+			/** Path */
+			path: string;
+			/** Size */
+			size: number;
+			/** Resolution */
+			resolution: string | null;
+			/** Source */
+			source: string | null;
+			/** Codec */
+			codec: string | null;
+			/** Hdr Flags */
+			hdr_flags: string[];
+			/** Audio Codecs */
+			audio_codecs: string[];
+			/** Episodes */
+			episodes: components['schemas']['LibraryEpisode'][];
+		};
+		/** LibraryStatus */
+		LibraryStatus: {
+			/**
+			 * State
+			 * @enum {string}
+			 */
+			state: 'idle' | 'scanning';
+			/** Last Scan At */
+			last_scan_at: string | null;
+			/** Files */
+			files: number;
+			/** Unmatched */
+			unmatched: number;
 		};
 		/** MediaDetails */
 		MediaDetails: {
@@ -643,6 +745,10 @@ export type HomePage = components['schemas']['HomePage'];
 export type HomeRow = components['schemas']['HomeRow'];
 export type IndexStatus = components['schemas']['IndexStatus'];
 export type IndexerFailure = components['schemas']['IndexerFailure'];
+export type LibraryAvailability = components['schemas']['LibraryAvailability'];
+export type LibraryEpisode = components['schemas']['LibraryEpisode'];
+export type LibraryFile = components['schemas']['LibraryFile'];
+export type LibraryStatus = components['schemas']['LibraryStatus'];
 export type MediaDetails = components['schemas']['MediaDetails'];
 export type MediaSummary = components['schemas']['MediaSummary'];
 export type MediaType = components['schemas']['MediaType'];
@@ -1074,6 +1180,78 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['MyListStatus'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	library_status_api_library_status_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['LibraryStatus'];
+				};
+			};
+		};
+	};
+	request_library_scan_api_library_scan_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['LibraryStatus'];
+				};
+			};
+		};
+	};
+	library_availability_api_library__media_type___media_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				media_type: components['schemas']['MediaType'];
+				media_id: number;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['LibraryAvailability'];
 				};
 			};
 			/** @description Validation Error */

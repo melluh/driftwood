@@ -22,6 +22,8 @@ from driftwood.db import Database
 from driftwood.indexers import INDEXERS
 from driftwood.indexers.base import Indexer
 from driftwood.indexers.manager import IndexerManager
+from driftwood.library.router import router as library_router
+from driftwood.library.service import LibraryService
 from driftwood.media.home import HomeService
 from driftwood.media.releases import ReleaseService
 from driftwood.media.router import router as media_router
@@ -62,6 +64,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     database = Database(settings.database.url)
     await database.migrate()
     app.state.database = database
+    library_service = LibraryService(settings.library, database)
+    app.state.library_service = library_service
+    for root in settings.library.roots:
+        if not root.path.exists():
+            log.warning("Library root %s does not exist: %s", root.name, root.path)
     provider = OidcProvider(settings.auth) if settings.auth.configured else None
     app.state.auth = AuthState(settings.auth, provider)
 
@@ -82,12 +89,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.release_service = release_service
         app.state.watch_service = WatchService(release_service, settings.selection)
         index_task = asyncio.create_task(titles.run(), name="title-index")
+        library_task = asyncio.create_task(library_service.run(), name="library")
         try:
             yield
         finally:
             index_task.cancel()
+            library_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await index_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await library_task
+            await library_service.shutdown()
             await indexers.aclose()
             await database.dispose()
 
@@ -114,3 +126,4 @@ app.include_router(auth_router, prefix="/api")
 # Everything else requires a signed-in user.
 app.include_router(media_router, prefix="/api", dependencies=[Depends(require_user)])
 app.include_router(my_list_router, prefix="/api", dependencies=[Depends(require_user)])
+app.include_router(library_router, prefix="/api", dependencies=[Depends(require_user)])
