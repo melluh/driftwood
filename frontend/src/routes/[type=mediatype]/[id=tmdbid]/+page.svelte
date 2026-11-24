@@ -4,6 +4,8 @@
 	import MediaHero from '#lib/components/media/MediaHero.svelte';
 	import PageSection from '#lib/components/layout/PageSection.svelte';
 	import ReleaseDebugPanel from '#lib/components/releases/ReleaseDebugPanel.svelte';
+	import LinkButton from '#lib/components/ui/LinkButton.svelte';
+	import { watchHref } from '#lib/media/format.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -18,6 +20,9 @@
 	{#if media.overview}
 		<p class="overview">{media.overview}</p>
 	{/if}
+	<div class="actions">
+		<LinkButton href={watchHref(media.media_type, media.id)} icon="play">Watch</LinkButton>
+	</div>
 </MediaHero>
 
 <PageSection>
@@ -37,6 +42,10 @@
 </PageSection>
 
 <style>
+	.actions {
+		margin-top: var(--space-2);
+	}
+
 	.overview {
 		max-width: 46rem;
 		color: var(--color-text-muted);

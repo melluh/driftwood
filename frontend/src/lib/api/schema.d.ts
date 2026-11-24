@@ -200,6 +200,29 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/media/{media_type}/{media_id}/watch': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Media Watch
+		 * @description Searches the indexers and picks the release to grab for watching right
+		 *     away (a modest 1080p encode when available), with the best release of
+		 *     every other quality slot as manual upgrades. Series default to S01E01.
+		 *     Nothing is downloaded yet.
+		 */
+		get: operations['media_watch_api_media__media_type___media_id__watch_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -349,6 +372,52 @@ export interface components {
 		 * @enum {string}
 		 */
 		MediaType: 'movie' | 'tv';
+		/** RankedRelease */
+		RankedRelease: {
+			release: components['schemas']['TorrentRelease'];
+			attributes: components['schemas']['ReleaseAttributes'];
+			/** Slot */
+			slot: string | null;
+			/** Slot Label */
+			slot_label: string | null;
+			/** Score */
+			score: number;
+			/** Factors */
+			factors: components['schemas']['ScoreFactor'][];
+			/** Effective Mbps */
+			effective_mbps: number | null;
+		};
+		/** Rejected */
+		Rejected: {
+			/** Reason */
+			reason: string;
+			/** Count */
+			count: number;
+		};
+		/**
+		 * ReleaseAttributes
+		 * @description What the release name says about its quality (parsed with guessit).
+		 */
+		ReleaseAttributes: {
+			/** Resolution */
+			resolution: string | null;
+			/** Source */
+			source: string | null;
+			/** Codec */
+			codec: string | null;
+			/** Hdr Flags */
+			hdr_flags: string[];
+			/** Audio Codecs */
+			audio_codecs: string[];
+			/** Language Variant */
+			language_variant: string | null;
+			/** Release Group */
+			release_group: string | null;
+			/** Season */
+			season: number | null;
+			/** Episodes */
+			episodes: number[];
+		};
 		/** ReleaseSearch */
 		ReleaseSearch: {
 			/** Query */
@@ -359,6 +428,13 @@ export interface components {
 			releases: components['schemas']['TorrentRelease'][];
 			/** Failures */
 			failures: components['schemas']['IndexerFailure'][];
+		};
+		/** ScoreFactor */
+		ScoreFactor: {
+			/** Name */
+			name: string;
+			/** Points */
+			points: number;
 		};
 		/** SearchStatus */
 		SearchStatus: {
@@ -414,6 +490,33 @@ export interface components {
 			/** Context */
 			ctx?: Record<string, never>;
 		};
+		/** WatchEpisode */
+		WatchEpisode: {
+			/** Season */
+			season: number;
+			/** Episode */
+			episode: number;
+		};
+		/**
+		 * WatchPlan
+		 * @description Which release to grab to start watching now, plus higher-quality alternatives.
+		 */
+		WatchPlan: {
+			/** Query */
+			query: string;
+			/** Indexers */
+			indexers: string[];
+			/** Failures */
+			failures: components['schemas']['IndexerFailure'][];
+			episode: components['schemas']['WatchEpisode'] | null;
+			pick: components['schemas']['RankedRelease'] | null;
+			/** Options */
+			options: components['schemas']['RankedRelease'][];
+			/** Considered */
+			considered: number;
+			/** Rejected */
+			rejected: components['schemas']['Rejected'][];
+		};
 	};
 	responses: never;
 	parameters: never;
@@ -433,10 +536,16 @@ export type IndexerFailure = components['schemas']['IndexerFailure'];
 export type MediaDetails = components['schemas']['MediaDetails'];
 export type MediaSummary = components['schemas']['MediaSummary'];
 export type MediaType = components['schemas']['MediaType'];
+export type RankedRelease = components['schemas']['RankedRelease'];
+export type Rejected = components['schemas']['Rejected'];
+export type ReleaseAttributes = components['schemas']['ReleaseAttributes'];
 export type ReleaseSearch = components['schemas']['ReleaseSearch'];
+export type ScoreFactor = components['schemas']['ScoreFactor'];
 export type SearchStatus = components['schemas']['SearchStatus'];
 export type TorrentRelease = components['schemas']['TorrentRelease'];
 export type ValidationError = components['schemas']['ValidationError'];
+export type WatchEpisode = components['schemas']['WatchEpisode'];
+export type WatchPlan = components['schemas']['WatchPlan'];
 export type $defs = Record<string, never>;
 export interface operations {
 	auth_config_api_auth_config_get: {
@@ -668,6 +777,41 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['ReleaseSearch'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	media_watch_api_media__media_type___media_id__watch_get: {
+		parameters: {
+			query?: {
+				season?: number | null;
+				episode?: number | null;
+			};
+			header?: never;
+			path: {
+				media_type: components['schemas']['MediaType'];
+				media_id: number;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['WatchPlan'];
 				};
 			};
 			/** @description Validation Error */

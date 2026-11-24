@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from driftwood.indexers.torrentleech import TorrentLeechSettings
+from driftwood.selection.config import SelectionSettings
 
 
 class TmdbSettings(BaseModel):
@@ -117,6 +118,8 @@ class Settings(BaseSettings):
     tmdb: TmdbSettings = TmdbSettings()
     title_index: TitleIndexSettings = TitleIndexSettings()
     indexers: IndexersSettings = IndexersSettings()
+    selection: SelectionSettings = SelectionSettings()
+
     database: DatabaseSettings = DatabaseSettings()
     auth: AuthSettings = AuthSettings()
 

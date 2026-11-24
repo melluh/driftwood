@@ -6,6 +6,10 @@ export function mediaHref(type: MediaType, id: number): string {
 	return resolve('/[type=mediatype]/[id=tmdbid]', { type, id });
 }
 
+export function watchHref(type: MediaType, id: number): string {
+	return resolve('/[type=mediatype]/[id=tmdbid]/watch', { type, id });
+}
+
 export function formatRuntime(minutes: number | null | undefined): string | null {
 	if (!minutes) return null;
 	const hours = Math.floor(minutes / 60);

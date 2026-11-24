@@ -85,6 +85,30 @@ spaced 4.1 s apart. `GET /api/media/{type}/{id}/releases` searches every enabled
 title (movies by IMDb id, series by title); each media page has a debug "Find torrents" button
 that calls it.
 
+## Watch: picking a release
+
+The Watch button opens a full-screen watch view at `/{movie|tv}/{id}/watch`. It searches the
+indexers (`GET /api/media/{type}/{id}/watch`) and shows the release it would grab. Nothing is
+downloaded yet.
+
+Selection (`backend/src/driftwood/selection/`) is ported from MediaManager's slot scoring:
+
+- Release names are parsed with guessit into resolution, source, codec, HDR, audio, language and
+  group. Cams, telesyncs and screeners, dubbed or multi-language releases, releases with fewer than
+  3 seeders, and releases whose bitrate (size / TMDB runtime) falls outside their slot's range are
+  dropped.
+- Each release goes into the first matching quality **slot**: 4K Remux, 4K Encode, 1080p Remux,
+  1080p Encode, 720p. Scores only compare releases within a slot: source (WEB-DL > Remux >
+  Blu-ray > WEBRip), then codec, HDR, closeness to the slot's preferred bitrate, seeders and audio.
+  Freeleech breaks ties.
+- Watch grabs the best **1080p Encode**, whose preferred bitrate is 6 Mbps (about 5.5 GB for a
+  two-hour movie). If there isn't one, it falls back to 720p, then 4K Encode, 1080p Remux and
+  4K Remux. The other slots' best releases are shown as manual upgrades.
+- Series watch a single episode (`?season=&episode=`, default S01E01).
+
+Slots, the watch order, release group tiers and the HDR ladder are configurable under
+`DRIFTWOOD_SELECTION__*` (see `selection/config.py`).
+
 ## Development
 
 ```sh

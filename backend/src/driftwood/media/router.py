@@ -11,8 +11,10 @@ from driftwood.media.schemas import (
     MediaType,
     ReleaseSearch,
     SearchStatus,
+    WatchPlan,
 )
 from driftwood.media.service import MediaService
+from driftwood.media.watch import WatchService
 
 router = APIRouter()
 
@@ -29,9 +31,14 @@ def get_release_service(request: Request) -> ReleaseService:
     return request.app.state.release_service
 
 
+def get_watch_service(request: Request) -> WatchService:
+    return request.app.state.watch_service
+
+
 MediaServiceDep = Annotated[MediaService, Depends(get_media_service)]
 HomeServiceDep = Annotated[HomeService, Depends(get_home_service)]
 ReleaseServiceDep = Annotated[ReleaseService, Depends(get_release_service)]
+WatchServiceDep = Annotated[WatchService, Depends(get_watch_service)]
 
 
 @router.get("/home")
@@ -86,3 +93,23 @@ async def media_releases(
     if result is None:
         raise HTTPException(status_code=404, detail="Media not found")
     return result
+
+
+@router.get("/media/{media_type}/{media_id}/watch")
+async def media_watch(
+    service: WatchServiceDep,
+    media_type: MediaType,
+    media_id: Annotated[int, Path(gt=0)],
+    season: Annotated[int | None, Query(ge=0)] = None,
+    episode: Annotated[int | None, Query(ge=1)] = None,
+) -> WatchPlan:
+    """
+    Searches the indexers and picks the release to grab for watching right
+    away (a modest 1080p encode when available), with the best release of
+    every other quality slot as manual upgrades. Series default to S01E01.
+    Nothing is downloaded yet.
+    """
+    plan = await service.plan(media_type, media_id, season=season, episode=episode)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="Media not found")
+    return plan

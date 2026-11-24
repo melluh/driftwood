@@ -22,7 +22,10 @@ export type {
 	MediaDetails,
 	MediaSummary,
 	MediaType,
+	RankedRelease,
+	Rejected,
 	ReleaseSearch,
 	SearchStatus,
-	TorrentRelease
+	TorrentRelease,
+	WatchPlan
 } from './schema';

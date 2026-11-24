@@ -26,6 +26,7 @@ from driftwood.media.home import HomeService
 from driftwood.media.releases import ReleaseService
 from driftwood.media.router import router as media_router
 from driftwood.media.service import MediaService
+from driftwood.media.watch import WatchService
 from driftwood.titles.store import TitleIndexStore
 from driftwood.tmdb.client import TmdbClient
 
@@ -72,9 +73,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         tmdb = TmdbClient(http, settings.tmdb)
         app.state.media_service = MediaService(titles, tmdb)
         app.state.home_service = HomeService(tmdb)
-        app.state.release_service = ReleaseService(
+        release_service = ReleaseService(
             tmdb, indexers, cache_ttl_seconds=settings.indexers.results_cache_ttl_seconds
         )
+        app.state.release_service = release_service
+        app.state.watch_service = WatchService(release_service, settings.selection)
         index_task = asyncio.create_task(titles.run(), name="title-index")
         try:
             yield

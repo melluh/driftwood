@@ -115,3 +115,61 @@ class ReleaseSearch(Schema):
     releases: list[TorrentRelease]
     """Most seeded first."""
     failures: list[IndexerFailure]
+
+
+class ReleaseAttributes(Schema):
+    """What the release name says about its quality (parsed with guessit)."""
+
+    resolution: str | None = None
+    source: str | None = None
+    codec: str | None = None
+    hdr_flags: list[str] = Field(default_factory=list)
+    audio_codecs: list[str] = Field(default_factory=list)
+    language_variant: str | None = None
+    release_group: str | None = None
+    season: int | None = None
+    episodes: list[int] = Field(default_factory=list)
+
+
+class ScoreFactor(Schema):
+    name: str
+    points: int
+
+
+class RankedRelease(Schema):
+    release: TorrentRelease
+    attributes: ReleaseAttributes
+    slot: str | None = None
+    """Quality slot name, e.g. `1080p_encode`; None if it fits no slot."""
+    slot_label: str | None = None
+    score: int
+    """Only comparable with releases in the same slot."""
+    factors: list[ScoreFactor]
+    effective_mbps: float | None = None
+
+
+class Rejected(Schema):
+    reason: str
+    count: int
+
+
+class WatchEpisode(Schema):
+    season: int
+    episode: int
+
+
+class WatchPlan(Schema):
+    """Which release to grab to start watching now, plus higher-quality alternatives."""
+
+    query: str
+    indexers: list[str]
+    failures: list[IndexerFailure]
+    episode: WatchEpisode | None = None
+    """For series: the episode that was searched."""
+    pick: RankedRelease | None = None
+    """The release to grab now: a modest 1080p encode when there is one."""
+    options: list[RankedRelease]
+    """The best release of every slot, best quality first (the pick included)."""
+    considered: int
+    """Releases the indexers returned."""
+    rejected: list[Rejected]

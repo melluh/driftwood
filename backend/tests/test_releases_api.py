@@ -10,6 +10,8 @@ from driftwood.indexers.manager import IndexerManager
 from driftwood.media.releases import ReleaseService
 from driftwood.media.router import router
 from driftwood.media.schemas import MediaType
+from driftwood.media.watch import WatchService
+from driftwood.selection.config import SelectionSettings
 from driftwood.tmdb.client import TmdbNotFoundError
 from tests.indexers.test_torrentleech_session import FakeTorrentLeech, make_indexer
 
@@ -69,3 +71,31 @@ def test_releases_endpoint_reports_indexer_failure() -> None:
 def test_releases_endpoint_unknown_media() -> None:
     response = client(IndexerManager([])).get("/api/media/movie/1/releases")
     assert response.status_code == httpx.codes.NOT_FOUND
+
+
+def watch_client(indexers: IndexerManager) -> TestClient:
+    app = FastAPI()
+    app.include_router(router, prefix="/api")
+    releases = ReleaseService(FakeTmdb(), indexers, cache_ttl_seconds=60)  # type: ignore[arg-type]
+    app.state.watch_service = WatchService(releases, SelectionSettings())
+    return TestClient(app)
+
+
+def test_watch_endpoint_picks_a_1080p_release() -> None:
+    site = FakeTorrentLeech()
+    response = watch_client(IndexerManager([make_indexer(site)])).get("/api/media/movie/278/watch")
+    assert response.status_code == httpx.codes.OK
+    body = response.json()
+    # FakeTmdb has no runtime, so bitrate bands are skipped.
+    assert body["pick"]["release"]["guid"] == "240001"
+    assert body["pick"]["slot"] == "1080p_encode"
+    assert body["pick"]["attributes"]["resolution"] == "1080p"
+    assert [o["slot"] for o in body["options"]] == ["4k_encode", "1080p_encode", "720p"]
+    assert body["considered"] == 3
+    assert body["episode"] is None
+
+
+def test_watch_endpoint_without_indexers() -> None:
+    body = watch_client(IndexerManager([])).get("/api/media/movie/278/watch").json()
+    assert body["pick"] is None
+    assert body["options"] == []
