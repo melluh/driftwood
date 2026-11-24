@@ -9,7 +9,7 @@ import time
 from collections.abc import Sequence
 from http.cookiejar import Cookie
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
@@ -17,7 +17,76 @@ from driftwood.indexers.errors import RateLimitedError, SiteUnavailableError
 
 log = logging.getLogger(__name__)
 
-DEFAULT_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
+# Requests look like Firefox 140 on Linux: same user agent, header set and
+# order, HTTP/2, and the Sec-Fetch-* / Referer a browser tab would send. (The
+# TLS handshake is Python's, not Firefox's; mimicking that needs curl_cffi.)
+FIREFOX_VERSION = "140.0"
+DEFAULT_USER_AGENT = (
+    f"Mozilla/5.0 (X11; Linux x86_64; rv:{FIREFOX_VERSION}) Gecko/20100101 "
+    f"Firefox/{FIREFOX_VERSION}"
+)
+
+type RequestKind = Literal["navigate", "fetch"]
+"""`navigate`: a page load or file download (link click, form post).
+`fetch`: a page's script loading data (XHR / fetch), e.g. JSON search results."""
+
+_ACCEPT = {
+    "navigate": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "fetch": "application/json, text/plain, */*",
+}
+
+
+def _origin(url: str) -> str:
+    parsed = httpx.URL(url)
+    return f"{parsed.scheme}://{parsed.netloc.decode()}"
+
+
+def browser_headers(
+    kind: RequestKind,
+    method: str,
+    url: str,
+    referer: str | None,
+    *,
+    user_agent: str = DEFAULT_USER_AGENT,
+) -> dict[str, str]:
+    """
+    Every header Firefox sends for this request, in Firefox's order. (httpx
+    re-appends updated headers, so passing the full set per request is what
+    keeps the order; it adds Host first and Cookie / Content-* itself.)
+    """
+    if referer is None:
+        site = "none"
+    elif _origin(referer) == _origin(url):
+        site = "same-origin"
+    else:
+        site = "cross-site"
+    headers = {
+        "User-Agent": user_agent,
+        "Accept": _ACCEPT[kind],
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+    }
+    if method == "POST":
+        headers["Origin"] = _origin(url)
+    if referer is not None:
+        headers["Referer"] = referer
+    headers["Connection"] = "keep-alive"  # dropped by httpx on HTTP/2, as Firefox does
+    if kind == "navigate":
+        headers.update(
+            {
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": site,
+                "Sec-Fetch-User": "?1",
+                "Priority": "u=0, i",
+            }
+        )
+    else:
+        headers.update(
+            {"Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": site}
+        )
+    return headers
 
 
 class HttpSession:
@@ -52,8 +121,14 @@ class HttpSession:
         self.retry_backoff = retry_backoff
         self._throttle_lock = asyncio.Lock()
         self._last_request = -float("inf")
+        self._current_page: str | None = None
+        """The last page navigated to: the Referer of the next request, like a browser tab."""
+        self.user_agent = user_agent
         self.client = httpx.AsyncClient(
-            headers={"User-Agent": user_agent},
+            # Every request passes its full header set (browser_headers); these
+            # are only a fallback for requests made on `client` directly.
+            headers={"User-Agent": user_agent, "Accept-Language": "en-US,en;q=0.5"},
+            http2=True,
             timeout=timeout,
             follow_redirects=False,
             transport=transport,
@@ -78,12 +153,25 @@ class HttpSession:
     async def post(self, path: str, **kwargs: Any) -> httpx.Response:
         return await self.request("POST", path, **kwargs)
 
-    async def request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+    async def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        kind: RequestKind = "navigate",
+        referer: str | None = None,
+        **kwargs: Any,
+    ) -> httpx.Response:
         """
         `path` is relative to the active mirror (absolute URLs are sent as-is,
         without mirror fallback). Raises `SiteUnavailableError` when every
         mirror refuses connections or the site keeps failing.
+
+        `kind` and `referer` shape the browser headers; the referer defaults to
+        the last page navigated to. A successful `navigate` GET becomes the new
+        current page.
         """
+        kwargs["kind"], kwargs["referer"] = kind, referer
         if path.startswith(("http://", "https://")):
             return await self._send_with_retries(method, path, **kwargs)
 
@@ -104,12 +192,25 @@ class HttpSession:
             return response
         raise SiteUnavailableError(f"all mirrors unreachable: {last_error!r}")
 
-    async def _send_with_retries(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+    async def _send_with_retries(
+        self,
+        method: str,
+        url: str,
+        *,
+        kind: RequestKind,
+        referer: str | None,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        if referer is None and self._current_page and _origin(self._current_page) == _origin(url):
+            referer = self._current_page
+        headers = browser_headers(
+            kind, method, url, referer, user_agent=self.user_agent
+        ) | kwargs.pop("headers", {})
         for attempt in range(self.max_retries + 1):
             last_attempt = attempt == self.max_retries
             await self._throttle()
             try:
-                response = await self.client.request(method, url, **kwargs)
+                response = await self.client.request(method, url, headers=headers, **kwargs)
             except (httpx.ConnectError, httpx.ConnectTimeout):
                 raise  # the mirror loop handles these
             except (httpx.TimeoutException, httpx.RemoteProtocolError) as exc:
@@ -127,6 +228,10 @@ class HttpSession:
                     raise SiteUnavailableError(f"{method} {url}: HTTP {response.status_code}")
                 await asyncio.sleep(self.retry_backoff * 2**attempt)
                 continue
+            # A page load moves the "tab"; a file download (NFO, .torrent) doesn't.
+            is_page = "html" in response.headers.get("content-type", "")
+            if kind == "navigate" and method == "GET" and response.is_success and is_page:
+                self._current_page = str(response.url)
             return response
         raise AssertionError("unreachable")
 

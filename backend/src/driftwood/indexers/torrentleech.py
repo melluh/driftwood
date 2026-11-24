@@ -38,8 +38,9 @@ MIRRORS = (
     "https://www.tlgetin.cc/",
 )
 
-MIN_REQUEST_INTERVAL = 4.1
-"""Seconds between requests, as in the Prowlarr definition."""
+MIN_REQUEST_INTERVAL = 1.0
+"""Seconds between requests. Prowlarr's definition uses 4.1; Driftwood deliberately uses
+1.0 to keep Watch responsive (still slower than someone clicking through the site)."""
 
 LOGIN_PATH = "user/account/login/"
 LOGOUT_SELECTOR = 'a[href="/user/account/logout"]'
@@ -342,6 +343,10 @@ class TorrentLeechIndexer(SessionIndexer):
 
     # Search
 
+    def search_request_options(self) -> dict[str, Any]:
+        # The site's browse page loads its results as JSON from its own script.
+        return {"kind": "fetch", "referer": self.http.url("torrents/browse")}
+
     def build_requests(self, query: SearchQuery) -> list[str]:
         return [build_search_path(query, self.settings)]
 
@@ -361,14 +366,15 @@ class TorrentLeechIndexer(SessionIndexer):
     async def fetch_nfo(self, guid: str) -> bytes | None:
         """`nfo/download/{fid}`; None when the torrent has no NFO."""
         path = f"nfo/download/{quote(guid, safe='')}"
+        details = self.http.url(f"torrent/{quote(guid, safe='')}")  # where the NFO link is
         await self.ensure_logged_in()
         generation = self._session_generation
-        response = await self.http.get(path)
+        response = await self.http.get(path, referer=details)
         if response.status_code == httpx.codes.NOT_FOUND:
             return None
         if self.is_logged_out(response):
             await self._relogin(generation)
-            response = await self.http.get(path)
+            response = await self.http.get(path, referer=details)
             if response.status_code == httpx.codes.NOT_FOUND:
                 return None
             if self.is_logged_out(response):
@@ -382,11 +388,11 @@ class TorrentLeechIndexer(SessionIndexer):
     async def download(self, release: Release) -> bytes:
         await self.ensure_logged_in()
         generation = self._session_generation
-        response = await self.http.get(release.download_url)
+        response = await self.http.get(release.download_url, referer=release.details_url)
         if response.status_code == httpx.codes.OK and _is_torrent(response):
             return response.content
         await self._relogin(generation)
-        response = await self.http.get(release.download_url)
+        response = await self.http.get(release.download_url, referer=release.details_url)
         if response.status_code == httpx.codes.OK and _is_torrent(response):
             return response.content
         raise IndexerError(

@@ -142,5 +142,5 @@ class SelectionSettings(BaseModel):
     """Added when the NFO lists a full (non-forced) subtitle track in a wanted language."""
 
     nfo_fetch_budget: int = 5
-    """Most NFOs fetched per Watch. Each is a request to the indexer (4.1 s apart on
+    """Most NFOs fetched per Watch. Each is a request to the indexer (1 s apart on
     TorrentLeech), so only the release about to be picked is checked, one at a time."""

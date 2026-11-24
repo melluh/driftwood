@@ -80,8 +80,10 @@ DRIFTWOOD_INDEXERS__TORRENTLEECH__PASSWORD=...
 ```
 
 Set "Torrents per page" to 100 in your TorrentLeech profile; results aren't paginated. Session
-cookies are kept in `backend/data/indexers/` so restarts don't log in again, and requests are
-spaced 4.1 s apart. `GET /api/media/{type}/{id}/releases` searches every enabled indexer for a
+cookies are kept in `backend/data/indexers/` so restarts don't log in again. Requests are spaced
+1 s apart (Prowlarr uses 4.1 s) and look like Firefox 140: its user agent, full header set and
+order, Sec-Fetch-* and Referer as a browser tab would send them, HTTP/2, and gzip/brotli/zstd. The
+TLS handshake is still Python's. `GET /api/media/{type}/{id}/releases` searches every enabled indexer for a
 title (movies by IMDb id, series by title); each media page has a debug "Find torrents" button
 that calls it.
 
@@ -113,7 +115,7 @@ Selection (`backend/src/driftwood/selection/`) is ported from MediaManager's slo
   (`unknown_subtitles_penalty` can set it apart). Wanted subtitles add 25. If the best release of the 1080p slot turns out to have no wanted
   subtitles, Watch moves on to the next slot's best release.
 - NFOs are fetched one at a time and only for the release about to be picked: the pick, and the
-  next one if the pick is demoted, up to 5 per Watch. Each is an indexer request, 4.1 s apart on
+  next one if the pick is demoted, up to 5 per Watch. Each is an indexer request, 1 s apart on
   TorrentLeech. NFOs are cached for a day. `GET /api/releases/{indexer}/{guid}/nfo` returns an NFO
   and what was read from it; the watch screen shows it under "NFO".
 

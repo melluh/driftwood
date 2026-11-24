@@ -38,6 +38,7 @@ class FakeTorrentLeech:
         self.logins = 0
         self.login_forms: list[dict[str, list[str]]] = []
         self.paths: list[str] = []
+        self.requests: list[httpx.Request] = []
 
     def expire_sessions(self) -> None:
         self.sessions.clear()
@@ -52,6 +53,7 @@ class FakeTorrentLeech:
             raise httpx.ConnectError("connection refused", request=request)
         path = request.url.path
         self.paths.append(path)
+        self.requests.append(request)
         logged_in = request.headers.get("cookie", "").removeprefix("tlsession=") in self.sessions
 
         if path == "/user/account/login/" and request.method == "GET":

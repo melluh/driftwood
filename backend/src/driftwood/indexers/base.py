@@ -1,7 +1,7 @@
 import asyncio
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import ClassVar, Literal, Self
+from typing import Any, ClassVar, Literal, Self
 
 import httpx
 from pydantic import BaseModel, HttpUrl
@@ -115,15 +115,19 @@ class SessionIndexer(Indexer):
                 self.http.clear_cookies()
                 await self._login()
 
-    async def fetch(self, path: str) -> httpx.Response:
+    def search_request_options(self) -> dict[str, Any]:
+        """Extra `HttpSession.request` options for search requests (e.g. `kind="fetch"`)."""
+        return {}
+
+    async def fetch(self, path: str, **options: Any) -> httpx.Response:
         """GET with the session; logs in again once if the session turns out to be expired."""
         await self.ensure_logged_in()
         generation = self._session_generation
-        response = await self.http.get(path)
+        response = await self.http.get(path, **options)
         if not self.is_logged_out(response):
             return response
         await self._relogin(generation)
-        response = await self.http.get(path)
+        response = await self.http.get(path, **options)
         if self.is_logged_out(response):
             raise AuthError(f"{self.name}: still logged out right after logging in")
         return response
@@ -131,7 +135,7 @@ class SessionIndexer(Indexer):
     async def search(self, query: SearchQuery) -> list[Release]:
         releases: dict[str, Release] = {}
         for path in self.build_requests(query):
-            response = await self.fetch(path)
+            response = await self.fetch(path, **self.search_request_options())
             for release in self.parse_response(response, query):
                 releases.setdefault(release.guid, release)
         results = list(releases.values())[query.offset :]
