@@ -18,10 +18,65 @@ class SlotCondition(BaseModel):
 
 class BitrateBand(BaseModel):
     min_mbps: float
-    """Below this (or above `max_mbps`) the release is rejected as mislabeled or fake."""
+    """Below this (or above `max_mbps`) the release is rejected: too low quality, or
+    mislabeled / fake."""
     preferred_mbps: float
-    """Releases score by how close they land to this."""
+    """The size score peaks here and falls linearly to 0 at `min_mbps` (quality loss)
+    and at `max_mbps` (longer download)."""
     max_mbps: float
+    codec_adjusted: bool = False
+    """Read the bitrates as H.264-equivalent: a release's bitrate is multiplied by its
+    codec's `codec_efficiency` first, so an HEVC file at 4 Mbps counts as ~5.6. For
+    slots that mix codecs; single-codec slots state their bitrates as-is."""
+
+
+class ScoringWeights(BaseModel):
+    """How much each property counts within a slot. Only differences between
+    releases of the same slot matter, not the absolute numbers."""
+
+    source: dict[str, int]
+    """By source: `web-dl`, `remux`, `bluray-encode`, `webrip`, `hdtv`, `dvd`."""
+    codec: dict[str, int] = Field(
+        default_factory=lambda: {"av1": 150, "h265": 120, "h264": 50, "xvid": 0}
+    )
+    size: int
+    """Points at the slot's preferred bitrate (see `BitrateBand`)."""
+    seeders_per_doubling: float
+    """Points per doubling of the seeder count: `n * log2(seeders)`..."""
+    seeders_max: int
+    """...up to this."""
+
+
+QUALITY_WEIGHTS = ScoringWeights(
+    # MediaManager's scale: source dominates, size and seeders break ties.
+    source={
+        "web-dl": 1000,
+        "remux": 950,
+        "bluray-encode": 900,
+        "webrip": 700,
+        "hdtv": 400,
+        "dvd": 300,
+    },
+    size=100,
+    seeders_per_doubling=10,
+    seeders_max=60,
+)
+
+SPEED_WEIGHTS = ScoringWeights(
+    # Watch now: a sensible size and a healthy swarm matter most. At 1080p a WEB-DL
+    # and a Blu-ray encode look alike; a WEBRip is a step down, HDTV/DVD more so.
+    source={
+        "web-dl": 300,
+        "remux": 300,
+        "bluray-encode": 300,
+        "webrip": 200,
+        "hdtv": 50,
+        "dvd": 0,
+    },
+    size=400,
+    seeders_per_doubling=40,
+    seeders_max=200,  # reached at 32 seeders
+)
 
 
 class SlotDefinition(BaseModel):
@@ -29,6 +84,9 @@ class SlotDefinition(BaseModel):
     label: str
     conditions: list[SlotCondition] = Field(default_factory=list)
     bitrate: BitrateBand | None = None
+    profile: Literal["speed", "quality"] = "quality"
+    """Which weights score this slot: `speed` for slots Watch grabs from (start
+    watching soon), `quality` for the manual upgrades."""
 
 
 class ReleaseGroupTier(BaseModel):
@@ -38,6 +96,11 @@ class ReleaseGroupTier(BaseModel):
 
 
 class HdrLadder(BaseModel):
+    enabled: bool = False
+    """Score releases by HDR format (`order`). Off by default, for SDR-only devices:
+    HDR then earns nothing, and only `dv_only_penalty` still applies, since Dolby Vision
+    without an HDR10 fallback shows wrong colors on any non-DV display.
+    Turn on with `DRIFTWOOD_SELECTION__HDR_LADDER__ENABLED=true`."""
     order: list[str] = Field(
         default_factory=lambda: ["dv_hdr10plus", "dv_hdr10", "hdr10plus", "hdr10", "dv", "sdr"]
     )
@@ -88,14 +151,17 @@ DEFAULT_SLOTS = [
             _in("codec", "h264", "h265", "av1"),
         ],
         # MediaManager targets 8 Mbps; Driftwood grabs this slot for immediate
-        # watching, so it aims lower (about 5.5 GB for a two-hour movie).
-        bitrate=BitrateBand(min_mbps=3, preferred_mbps=6, max_mbps=15),
+        # watching, so it aims lower: 6 Mbps H.264 is ~4.2 GB for 97 minutes, ~5.4 GB
+        # for two hours. Below 4 Mbps (~2.8 GB / 97 min) quality suffers too much.
+        bitrate=BitrateBand(min_mbps=4, preferred_mbps=6, max_mbps=15, codec_adjusted=True),
+        profile="speed",
     ),
     SlotDefinition(
         name="720p",
         label="720p",
         conditions=[_eq("resolution", "720p")],
-        bitrate=BitrateBand(min_mbps=1.5, preferred_mbps=4, max_mbps=8),
+        bitrate=BitrateBand(min_mbps=1.5, preferred_mbps=4, max_mbps=8, codec_adjusted=True),
+        profile="speed",
     ),
 ]
 
@@ -141,10 +207,27 @@ class SelectionSettings(BaseModel):
     wanted_subtitles_bonus: int = 25
     """Added when the NFO lists a full (non-forced) subtitle track in a wanted language."""
 
-    freeleech_bonus: int = 500
+    freeleech_bonus: int = 300
     """Added to freeleech releases (scaled for partial freeleech: 50% off earns half).
-    Big enough to beat a better source, codec or size within a slot, but smaller than
-    `missing_subtitles_penalty`, so freeleech never wins without wanted subtitles."""
+    Beats differences in source, codec or seeders, but not the full size range (400 in
+    speed slots), so a much bigger freeleech file still loses to one near the target;
+    and never the subtitle penalties."""
+
+    speed_weights: ScoringWeights = Field(default_factory=lambda: SPEED_WEIGHTS.model_copy())
+    """Weights for `profile="speed"` slots (the ones Watch grabs from)."""
+
+    quality_weights: ScoringWeights = Field(default_factory=lambda: QUALITY_WEIGHTS.model_copy())
+    """Weights for `profile="quality"` slots (manual upgrades) and unslotted releases."""
+
+    codec_efficiency: dict[str, float] = Field(default_factory=lambda: {"h265": 1.4, "av1": 1.6})
+    """Bitrate multipliers to H.264-equivalent (unlisted codecs: 1.0). HEVC needs roughly
+    30-40% less bitrate than H.264 for the same quality, AV1 a bit less still. Rules of
+    thumb: encoder quality varies a lot."""
+
+    def weights_for(self, slot: SlotDefinition | None) -> ScoringWeights:
+        if slot is not None and slot.profile == "speed":
+            return self.speed_weights
+        return self.quality_weights
 
     nfo_fetch_budget: int = 5
     """Most NFOs fetched per Watch. Each is a request to the indexer (1 s apart on

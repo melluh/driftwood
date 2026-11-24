@@ -3,10 +3,10 @@ Slot-based release scoring, ported from MediaManager's `media_manager/indexer/sc
 
 Each release is classified, hard-filtered (cams, language variants, low
 seeders, implausible bitrate, wrong episode), put into the first slot it
-matches, and scored only against releases in that same slot. Weights keep
-MediaManager's magnitude spacing (source ~1000s, HDR ~100s, codec ~100s,
-group tier ≤100), except that bitrate fit and seeders weigh more: Driftwood
-grabs for immediate watching, where a smaller file and a fast swarm matter.
+matches, and scored only against releases in that same slot, with the slot's
+weights (`ScoringWeights`): `speed` slots, which Watch grabs from, favour a
+size near the target bitrate and a healthy swarm; `quality` slots (manual
+upgrades) keep MediaManager's source-first scale.
 """
 
 import math
@@ -21,30 +21,14 @@ from driftwood.selection.config import (
     BitrateBand,
     HdrLadder,
     ReleaseGroupTier,
+    ScoringWeights,
     SelectionSettings,
     SlotCondition,
     SlotDefinition,
 )
 from driftwood.selection.nfo import NfoInfo, normalize_language
 
-SOURCE_QUALITY_SCORE = {
-    "web-dl": 1000,
-    "remux": 950,
-    "bluray-encode": 900,
-    "webrip": 700,
-    "hdtv": 400,
-    "dvd": 300,
-}
-
-CODEC_QUALITY_SCORE = {"av1": 150, "h265": 120, "h264": 50, "xvid": 0}
-
 AUDIO_TIEBREAK_SCORE = {"truehd": 8, "ddp": 8, "dts": 5, "atmos": 4, "opus": 3, "aac": 2}
-
-BITRATE_FIT_MAX_SCORE = 100
-"""MediaManager uses 40; closeness to the (smaller) preferred size matters more here."""
-
-SEEDER_HEALTH_MAX_SCORE = 60
-"""MediaManager uses 25; more seeders means the download starts playing sooner."""
 
 
 class Rejection:
@@ -115,6 +99,8 @@ class Candidate:
     slot: SlotDefinition | None = None
     slot_index: int | None = None
     effective_mbps: float | None = None
+    compared_mbps: float | None = None
+    """The bitrate checked against the slot's band: H.264-equivalent in codec-adjusted slots."""
     score: int = 0
     factors: list[tuple[str, int]] = field(default_factory=list)
     nfo: NfoInfo | None = None
@@ -223,27 +209,42 @@ def hdr_tier(hdr_flags: tuple[str, ...]) -> str:
 
 
 def hdr_score(tier: str, ladder: HdrLadder) -> int:
+    if not ladder.enabled:
+        return ladder.dv_only_penalty if tier == "dv" else 0
     index = ladder.order.index(tier) if tier in ladder.order else len(ladder.order)
     score = 100 * (len(ladder.order) - index)
     return score + ladder.dv_only_penalty if tier == "dv" else score
 
 
-def bitrate_fit_score(mbps: float | None, band: BitrateBand | None) -> int:
+def bitrate_fit(mbps: float | None, band: BitrateBand | None) -> float:
+    """
+    1.0 at the band's preferred bitrate, falling linearly to 0 at its min (quality
+    loss) and its max (longer download); 0 outside or when unknown.
+    """
     if band is None or mbps is None or not band.min_mbps <= mbps <= band.max_mbps:
-        return 0
+        return 0.0
     half_range = (
         band.preferred_mbps - band.min_mbps
         if mbps <= band.preferred_mbps
         else band.max_mbps - band.preferred_mbps
     )
     if half_range <= 0:
-        return BITRATE_FIT_MAX_SCORE
-    fit = max(0.0, 1 - abs(mbps - band.preferred_mbps) / half_range)
-    return round(BITRATE_FIT_MAX_SCORE * fit)
+        return 1.0
+    return max(0.0, 1 - abs(mbps - band.preferred_mbps) / half_range)
 
 
-def seeder_score(seeders: int | None) -> int:
-    return min(SEEDER_HEALTH_MAX_SCORE, round(10 * math.log2(max(1, seeders or 0))))
+def seeder_score(seeders: int | None, weights: ScoringWeights) -> int:
+    points = weights.seeders_per_doubling * math.log2(max(1, seeders or 0))
+    return min(weights.seeders_max, round(points))
+
+
+def band_mbps(
+    mbps: float | None, codec: str | None, band: BitrateBand | None, settings: SelectionSettings
+) -> float | None:
+    """The bitrate to compare with `band`: H.264-equivalent when the band says so."""
+    if mbps is None or band is None or not band.codec_adjusted:
+        return mbps
+    return mbps * settings.codec_efficiency.get(codec or "", 1.0)
 
 
 def effective_mbps(
@@ -304,28 +305,26 @@ def score_releases(
 
         candidate = Candidate(release, attributes)
         candidate.effective_mbps = effective_mbps(release, attributes, runtime_minutes)
+        band = None
         if found := find_slot(attributes, settings.slots, tiers):
             slot, index = found
             band = slot.bitrate
-            mbps = candidate.effective_mbps
+            mbps = band_mbps(candidate.effective_mbps, attributes.codec, band, settings)
             if band is not None and mbps is not None and not band.min_mbps <= mbps <= band.max_mbps:
                 rejected[Rejection.BITRATE] += 1
                 continue
             candidate.slot, candidate.slot_index = slot, index
+            candidate.compared_mbps = mbps
 
+        weights = settings.weights_for(candidate.slot)
         tier = hdr_tier(attributes.hdr_flags)
         source = attributes.source
         factors = [
-            (f"source:{source}", SOURCE_QUALITY_SCORE.get(source, 0) if source else 0),
-            (f"codec:{attributes.codec}", CODEC_QUALITY_SCORE.get(attributes.codec or "", 0)),
+            (f"source:{source}", weights.source.get(source, 0) if source else 0),
+            (f"codec:{attributes.codec}", weights.codec.get(attributes.codec or "", 0)),
             (f"hdr:{tier}", hdr_score(tier, settings.hdr_ladder)),
-            (
-                "bitrate_fit",
-                bitrate_fit_score(
-                    candidate.effective_mbps, candidate.slot.bitrate if candidate.slot else None
-                ),
-            ),
-            ("seeders", seeder_score(release.seeders)),
+            ("bitrate_fit", round(weights.size * bitrate_fit(candidate.compared_mbps, band))),
+            ("seeders", seeder_score(release.seeders, weights)),
             (
                 "audio",
                 max((AUDIO_TIEBREAK_SCORE.get(c, 0) for c in attributes.audio_codecs), default=0),

@@ -159,6 +159,10 @@ class RankedRelease(Schema):
     """Only comparable with releases in the same slot."""
     factors: list[ScoreFactor]
     effective_mbps: float | None = None
+    """Average bitrate (size / runtime)."""
+    equivalent_mbps: float | None = None
+    """The bitrate scored against the slot's target: H.264-equivalent in slots that
+    mix codecs (HEVC x1.4, AV1 x1.6), else the same as `effective_mbps`."""
     subtitle_status: SubtitleStatus | None = None
     """From the NFO: `wanted` (has a wanted language), `missing`, `unknown` (no NFO or it
     doesn't say) or `not_checked`. None when no subtitle languages are configured."""

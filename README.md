@@ -100,13 +100,27 @@ Selection (`backend/src/driftwood/selection/`) is ported from MediaManager's slo
   3 seeders, and releases whose bitrate (size / TMDB runtime) falls outside their slot's range are
   dropped.
 - Each release goes into the first matching quality **slot**: 4K Remux, 4K Encode, 1080p Remux,
-  1080p Encode, 720p. Scores only compare releases within a slot: source (WEB-DL > Remux >
-  Blu-ray > WEBRip), then codec, HDR, closeness to the slot's preferred bitrate, seeders and audio.
-  Freeleech adds a big bonus (500, `freeleech_bonus`; partial freeleech earns its share). That beats
-  a better source, codec or size within the slot, but not missing subtitles (−1000).
-- Watch grabs the best **1080p Encode**, whose preferred bitrate is 6 Mbps (about 5.5 GB for a
-  two-hour movie). If there isn't one, it falls back to 720p, then 4K Encode, 1080p Remux and
-  4K Remux. The other slots' best releases are shown as manual upgrades.
+  1080p Encode, 720p. Scores only compare releases within a slot, using that slot's weights:
+  - **Speed** slots (1080p Encode, 720p: the ones Watch grabs from) favour starting to watch soon.
+    Size scores up to 400: full points at the slot's target bitrate, falling linearly to 0 at its
+    minimum (quality loss) and its maximum (longer download). Seeders score `40 × log2(seeders)`,
+    up to 200 (reached at 32). Source matters less: WEB-DL and Blu-ray encode 300, WEBRip 200,
+    HDTV 50, DVD 0.
+  - **Quality** slots (4K and Remux: manual upgrades) keep MediaManager's scale, where source
+    dominates (WEB-DL 1000, Remux 950, Blu-ray 900, WEBRip 700, …), size scores up to 100 and
+    seeders up to 60.
+  - Both add codec (AV1 150, HEVC 120, H.264 50), HDR (off by default,
+    `DRIFTWOOD_SELECTION__HDR_LADDER__ENABLED=true` turns it on; Dolby Vision without an HDR10
+    fallback always loses 20) and audio as a tiebreak. Weights are configurable
+    (`speed_weights`, `quality_weights`).
+  - Freeleech adds 300 (`freeleech_bonus`; partial freeleech earns its share). That beats source,
+    codec and seeder differences, and a freeleech file up to about twice the target size, but not
+    one further off, nor missing or unconfirmed subtitles (−1000).
+- Watch grabs the best **1080p Encode**. Its range is 4–6–15 Mbps as H.264: 6 Mbps is about
+  4.2 GB for a 97-minute film and 5.4 GB for two hours; below 4 Mbps (~2.8 GB / 97 min) is rejected.
+  HEVC and AV1 count as H.264-equivalent (×1.4 and ×1.6, `codec_efficiency`), so a 2.4 GB HEVC
+  encode counts as ~5 Mbps. If there's no 1080p release, Watch falls back to 720p, then 4K Encode,
+  1080p Remux and 4K Remux. The other slots' best releases are shown as manual upgrades.
 - Series watch a single episode (`?season=&episode=`, default S01E01).
 - **Subtitles** are checked against the release's NFO (TorrentLeech:
   `nfo/download/{id}`). It reads MediaInfo dumps (`Text #n` sections) and scene-style

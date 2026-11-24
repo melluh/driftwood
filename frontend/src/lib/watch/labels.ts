@@ -28,7 +28,13 @@ export function qualityTags(ranked: RankedRelease): string[] {
 /** `5.4 GB · 6.1 Mbps` */
 export function sizeSummary(ranked: RankedRelease): string {
 	const size = formatBytes(ranked.release.size) ?? 'Unknown size';
-	return ranked.effective_mbps ? `${size} · ${ranked.effective_mbps.toFixed(1)} Mbps` : size;
+	const { effective_mbps: mbps, equivalent_mbps: equivalent } = ranked;
+	if (!mbps) return size;
+	const summary = `${size} · ${mbps.toFixed(1)} Mbps`;
+	// HEVC / AV1 are scored as their H.264-equivalent bitrate.
+	return equivalent && Math.abs(equivalent - mbps) >= 0.05
+		? `${summary} (≈${equivalent.toFixed(1)} as H.264)`
+		: summary;
 }
 
 /** `S01E01` */

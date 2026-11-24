@@ -53,6 +53,7 @@ def to_ranked(candidate: Candidate) -> RankedRelease:
         score=candidate.score,
         factors=[ScoreFactor(name=name, points=points) for name, points in candidate.factors],
         effective_mbps=round(candidate.effective_mbps, 2) if candidate.effective_mbps else None,
+        equivalent_mbps=round(candidate.compared_mbps, 2) if candidate.compared_mbps else None,
         subtitle_status=SubtitleStatus(candidate.subtitles) if candidate.subtitles else None,
         subtitles=[
             SubtitleTrack(language=track.language, forced=track.forced)

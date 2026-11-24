@@ -1,8 +1,9 @@
 from driftwood.indexers.models import Release
 from driftwood.selection.classification import classify_release
-from driftwood.selection.config import ReleaseGroupTier, SelectionSettings
+from driftwood.selection.config import HdrLadder, ReleaseGroupTier, SelectionSettings
 from driftwood.selection.nfo import NfoInfo, SubtitleTrack
 from driftwood.selection.scoring import (
+    Candidate,
     EpisodeTarget,
     Rejection,
     Selection,
@@ -65,13 +66,74 @@ def test_watch_picks_a_modest_1080p_encode_over_bigger_ones() -> None:
     assert winners == ["4k_remux", "4k_encode", "1080p_encode", "720p"]
 
 
-def test_codec_and_source_outweigh_size_within_a_slot() -> None:
-    releases = [
-        release("Movie.2023.1080p.WEBRip.x264-RIP", 5),
-        release("Movie.2023.1080p.WEB-DL.H.264-WEBDL", 8),
-    ]
-    selection = score_releases(releases, SelectionSettings(), runtime_minutes=RUNTIME)
-    assert selection.candidates[0].release.title.endswith("-WEBDL")
+# The Breakfast Club scenarios: 97 minutes, speed-scored 1080p Encode slot.
+BREAKFAST = 97
+NO_SUBS = SelectionSettings(subtitle_languages=[])
+
+
+def breakfast(*releases: Release) -> list[Candidate]:
+    return score_releases(list(releases), NO_SUBS, runtime_minutes=BREAKFAST).candidates
+
+
+def test_size_near_target_beats_a_bigger_web_dl() -> None:
+    ranked = breakfast(
+        release("Movie.1985.1080p.WEB-DL.DD5.1.H.264-BIG", 8.5, 40),
+        release("Movie.1985.1080p.BluRay.x264-SMALL", 4.2, 40),
+    )
+    assert ranked[0].release.title.endswith("-SMALL")
+    assert ("bitrate_fit", 391) in ranked[0].factors
+    assert ("source:bluray-encode", 300) in ranked[0].factors
+
+
+def test_hevc_bitrate_counts_as_h264_equivalent() -> None:
+    ranked = breakfast(
+        release("Movie.1985.1080p.WEB-DL.DD5.1.H.264-BIG", 8.5, 40),
+        release("Movie.1985.1080p.WEBRip.x265-TINY", 2.4, 40),
+    )
+    tiny = next(c for c in ranked if c.release.title.endswith("-TINY"))
+    assert round(tiny.effective_mbps or 0, 1) == 3.5
+    assert round(tiny.compared_mbps or 0, 1) == 5.0  # x1.4: above the 4 Mbps floor
+    assert ranked[0] is tiny
+
+
+def test_a_healthy_swarm_beats_a_better_source() -> None:
+    ranked = breakfast(
+        release("Movie.1985.1080p.BluRay.x264-FEW", 4.2, 5),
+        release("Movie.1985.1080p.WEBRip.x264-MANY", 4.2, 500),
+    )
+    assert ranked[0].release.title.endswith("-MANY")
+    assert ("seeders", 200) in ranked[0].factors
+
+
+def test_below_the_target_loses_points_and_below_the_floor_is_rejected() -> None:
+    selection = score_releases(
+        [
+            release("Movie.1985.1080p.WEB-DL.H.264-TARGET", 4.2),
+            release("Movie.1985.1080p.WEB-DL.H.264-LEAN", 3.0),  # 4.4 Mbps
+            release("Movie.1985.1080p.WEB-DL.H.264-STARVED", 2.6),  # 3.8 Mbps
+        ],
+        NO_SUBS,
+        runtime_minutes=BREAKFAST,
+    )
+    by_title = {c.release.title.split("-")[-1]: c for c in selection.candidates}
+    assert set(by_title) == {"TARGET", "LEAN"}
+    assert by_title["TARGET"].score > by_title["LEAN"].score
+    assert selection.rejected[Rejection.BITRATE] == 1
+
+
+def test_upgrade_slots_keep_quality_weights() -> None:
+    ranked = breakfast(release("Movie.1985.2160p.WEB-DL.H.265-UHD", 12))
+    assert ranked[0].slot is not None and ranked[0].slot.name == "4k_encode"
+    assert ("source:web-dl", 1000) in ranked[0].factors
+    assert ("seeders", 56) in ranked[0].factors
+
+
+def test_freeleech_wins_up_to_about_double_the_target_size() -> None:
+    near = release("Movie.1985.1080p.WEB-DL.H.264-NEAR", 4.2)  # ~6 Mbps
+    free_9 = release("Movie.1985.1080p.WEB-DL.H.264-FREE", 6.3, freeleech=True)  # ~9 Mbps
+    free_14 = release("Movie.1985.1080p.WEB-DL.H.264-FREE", 9.8, freeleech=True)  # ~14 Mbps
+    assert breakfast(near, free_9)[0].release is free_9
+    assert breakfast(near, free_14)[0].release is near
 
 
 def test_falls_back_to_720p_then_4k() -> None:
@@ -148,7 +210,7 @@ def test_freeleech_bonus_beats_better_source_codec_and_group() -> None:
     selection = score_releases(releases, settings, runtime_minutes=RUNTIME)
     first = selection.candidates[0]
     assert first.release.title.endswith("-FREE")
-    assert ("freeleech", 500) in first.factors
+    assert ("freeleech", 300) in first.factors
     assert not any(name == "freeleech" for name, _ in selection.candidates[1].factors)
 
 
@@ -156,7 +218,7 @@ def test_partial_freeleech_earns_part_of_the_bonus() -> None:
     half = release("Movie.2023.1080p.WEB-DL.H.264-HALF", 5)
     half.download_factor = 0.5
     selection = score_releases([half], SelectionSettings(), runtime_minutes=RUNTIME)
-    assert ("freeleech", 250) in selection.candidates[0].factors
+    assert ("freeleech", 150) in selection.candidates[0].factors
 
 
 def test_freeleech_does_not_outweigh_missing_subtitles() -> None:
@@ -300,3 +362,32 @@ def test_freeleech_does_not_outweigh_unconfirmed_subtitles() -> None:
         [free, paid], SelectionSettings(), runtime_minutes=RUNTIME, nfos=nfos
     )
     assert selection.candidates[0].release.title.endswith("-PAID")
+
+
+# HDR
+
+HDR10 = "Movie.2023.2160p.WEB-DL.HDR10.H.265-HDR"
+SDR = "Movie.2023.2160p.WEB-DL.H.265-SDR"
+DV_ONLY = "Movie.2023.2160p.WEB-DL.DV.H.265-DV"
+
+
+def hdr_scored(settings: SelectionSettings) -> dict[str, Candidate]:
+    releases = [release(HDR10, 14), release(SDR, 14), release(DV_ONLY, 14)]
+    selection = score_releases(releases, settings, runtime_minutes=RUNTIME)
+    return {c.release.title: c for c in selection.candidates}
+
+
+def test_hdr_scoring_is_off_by_default() -> None:
+    by_title = hdr_scored(SelectionSettings())
+    assert by_title[HDR10].score == by_title[SDR].score
+    assert not any(name.startswith("hdr") for name, _ in by_title[HDR10].factors)
+    # Dolby Vision without an HDR10 fallback still loses: wrong colors on non-DV displays.
+    assert ("hdr:dv", -20) in by_title[DV_ONLY].factors
+    assert by_title[DV_ONLY].score < by_title[SDR].score
+
+
+def test_hdr_scoring_can_be_turned_on() -> None:
+    by_title = hdr_scored(SelectionSettings(hdr_ladder=HdrLadder(enabled=True)))
+    assert ("hdr:hdr10", 300) in by_title[HDR10].factors
+    assert ("hdr:sdr", 100) in by_title[SDR].factors
+    assert by_title[HDR10].score > by_title[SDR].score

@@ -406,6 +406,8 @@ export interface components {
 			factors: components['schemas']['ScoreFactor'][];
 			/** Effective Mbps */
 			effective_mbps: number | null;
+			/** Equivalent Mbps */
+			equivalent_mbps: number | null;
 			subtitle_status: components['schemas']['SubtitleStatus'] | null;
 			/** Subtitles */
 			subtitles: components['schemas']['SubtitleTrack'][];
