@@ -208,6 +208,17 @@ Driftwood makes thumbnails for a video that has none as soon as a download is im
 
 Segments and extracted subtitles live in `DRIFTWOOD_PLAYBACK__DIRECTORY` (default: `driftwood-playback` in the system temp directory). Budget a few hundred MB per active stream (more for 4K remuxes), and prefer a disk-backed directory if `/tmp` is a RAM-backed tmpfs.
 
+### Home page: only watchable titles
+
+The home page's hero and "Popular" rows only show titles Watch would find a release for (so no
+cam-only cinema releases). For series that means S01E01. Each check is an indexer search, so a
+background task works through the popular titles one at a time. It starts at startup, runs again
+every 30 minutes, and goes in the hero's order. A title that hasn't been checked yet is hidden.
+Results are kept in `backend/data/home_availability.json`. Available titles are rechecked after
+24 h and unavailable ones after 4 h; a stale result stays in use while it's rechecked. Without any
+indexer configured the home page isn't filtered. Settings are under `DRIFTWOOD_HOME__*` (see
+`HomeSettings` in `config.py`).
+
 ## Development
 
 ```sh

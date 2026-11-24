@@ -27,6 +27,7 @@ from driftwood.indexers.base import Indexer
 from driftwood.indexers.manager import IndexerManager
 from driftwood.library.router import router as library_router
 from driftwood.library.service import LibraryService
+from driftwood.media.availability import AvailabilityChecker, watch_check
 from driftwood.media.home import HomeService
 from driftwood.media.releases import ReleaseService
 from driftwood.media.router import router as media_router
@@ -91,7 +92,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     async with httpx.AsyncClient(timeout=10, limits=limits) as http:
         tmdb = TmdbClient(http, settings.tmdb)
         app.state.media_service = MediaService(titles, tmdb)
-        app.state.home_service = HomeService(tmdb)
         app.state.my_list_service = MyListService(tmdb)
         app.state.progress_service = WatchProgressService(tmdb)
         release_service = ReleaseService(
@@ -110,14 +110,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             trickplay=playback_service.trickplay,
         )
         app.state.download_service = download_service
-        app.state.watch_service = WatchService(
+        watch_service = WatchService(
             release_service, settings.selection, can_download=download_service.enabled
         )
+        app.state.watch_service = watch_service
+        # Without indexers nothing could be checked, so the home page goes unfiltered.
+        availability = (
+            AvailabilityChecker(watch_check(watch_service), settings.home)
+            if indexers.indexers
+            else None
+        )
+        home_service = HomeService(tmdb, availability)
+        app.state.home_service = home_service
+
         tasks = [
             asyncio.create_task(titles.run(), name="title-index"),
             asyncio.create_task(library_service.run(), name="library"),
             asyncio.create_task(download_service.run(), name="downloads"),
+            asyncio.create_task(home_service.run(), name="home-refresh"),
         ]
+        if availability is not None:
+            tasks.append(asyncio.create_task(availability.run(), name="home-availability"))
         try:
             yield
         finally:

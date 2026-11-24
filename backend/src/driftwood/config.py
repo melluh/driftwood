@@ -70,6 +70,28 @@ class IndexersSettings(BaseModel):
     """Set `DRIFTWOOD_INDEXERS__TORRENTLEECH__USERNAME` / `__PASSWORD` to enable."""
 
 
+class HomeSettings(BaseModel):
+    """
+    The home page only shows titles with a release "Watch" would grab (no cams).
+    Checking costs one indexer search per title, so verdicts are kept on disk
+    and refreshed in the background.
+    """
+
+    availability_file: Path = Path("data/home_availability.json")
+
+    available_ttl_hours: float = 24.0
+    """How long "has a watchable release" holds before the title is rechecked."""
+
+    unavailable_ttl_hours: float = 4.0
+    """Shorter: cam-only titles get proper releases, and should appear soon after."""
+
+    failed_retry_minutes: float = 10.0
+    """A check that errored (indexer down, TMDB failing) is retried after this."""
+
+    refresh_interval_minutes: float = 30.0
+    """How often the popular lists are re-read and their new titles checked."""
+
+
 class DatabaseSettings(BaseModel):
     url: str = "sqlite+aiosqlite:///data/driftwood.db"
     """SQLAlchemy async database URL. Migrations run automatically on startup."""
@@ -249,6 +271,7 @@ class Settings(BaseSettings):
     title_index: TitleIndexSettings = TitleIndexSettings()
     indexers: IndexersSettings = IndexersSettings()
     selection: SelectionSettings = SelectionSettings()
+    home: HomeSettings = HomeSettings()
 
     database: DatabaseSettings = DatabaseSettings()
     auth: AuthSettings = AuthSettings()
