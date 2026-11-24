@@ -2,7 +2,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 
-from driftwood.media.schemas import MediaDetails, MediaSummary, MediaType, SearchStatus
+from driftwood.media.home import HomeService
+from driftwood.media.schemas import (
+    HomePage,
+    MediaDetails,
+    MediaSummary,
+    MediaType,
+    SearchStatus,
+)
 from driftwood.media.service import MediaService
 
 router = APIRouter()
@@ -12,7 +19,18 @@ def get_media_service(request: Request) -> MediaService:
     return request.app.state.media_service
 
 
+def get_home_service(request: Request) -> HomeService:
+    return request.app.state.home_service
+
+
 MediaServiceDep = Annotated[MediaService, Depends(get_media_service)]
+HomeServiceDep = Annotated[HomeService, Depends(get_home_service)]
+
+
+@router.get("/home")
+async def home(service: HomeServiceDep) -> HomePage:
+    """Featured highlights plus rows of suggestions for the home page."""
+    return await service.page()
 
 
 @router.get("/search")

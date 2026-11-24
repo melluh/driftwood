@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+	'/api/home': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Home
+		 * @description Featured highlights plus rows of suggestions for the home page.
+		 */
+		get: operations['home_api_home_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/search': {
 		parameters: {
 			query?: never;
@@ -86,6 +106,22 @@ export interface components {
 			/** Detail */
 			detail?: components['schemas']['ValidationError'][];
 		};
+		/** HomePage */
+		HomePage: {
+			/** Featured */
+			featured: components['schemas']['MediaSummary'][];
+			/** Rows */
+			rows: components['schemas']['HomeRow'][];
+		};
+		/** HomeRow */
+		HomeRow: {
+			/** Id */
+			id: string;
+			/** Title */
+			title: string;
+			/** Items */
+			items: components['schemas']['MediaSummary'][];
+		};
 		/**
 		 * IndexStatus
 		 * @enum {string}
@@ -106,12 +142,14 @@ export interface components {
 			poster_path: string | null;
 			/** Backdrop Path */
 			backdrop_path: string | null;
+			/** Overview */
+			overview: string | null;
+			/** Vote Average */
+			vote_average: number | null;
 			/** Popularity */
 			popularity: number | null;
 			/** Tagline */
 			tagline: string | null;
-			/** Overview */
-			overview: string | null;
 			/** Genres */
 			genres: components['schemas']['Genre'][];
 			/** Runtime */
@@ -122,8 +160,6 @@ export interface components {
 			last_air_date: string | null;
 			/** Status */
 			status: string | null;
-			/** Vote Average */
-			vote_average: number | null;
 			/** Vote Count */
 			vote_count: number | null;
 			/** Number Of Seasons */
@@ -155,6 +191,10 @@ export interface components {
 			poster_path: string | null;
 			/** Backdrop Path */
 			backdrop_path: string | null;
+			/** Overview */
+			overview: string | null;
+			/** Vote Average */
+			vote_average: number | null;
 			/** Popularity */
 			popularity: number | null;
 		};
@@ -192,6 +232,8 @@ export interface components {
 export type CastMember = components['schemas']['CastMember'];
 export type Genre = components['schemas']['Genre'];
 export type HttpValidationError = components['schemas']['HTTPValidationError'];
+export type HomePage = components['schemas']['HomePage'];
+export type HomeRow = components['schemas']['HomeRow'];
 export type IndexStatus = components['schemas']['IndexStatus'];
 export type MediaDetails = components['schemas']['MediaDetails'];
 export type MediaSummary = components['schemas']['MediaSummary'];
@@ -200,6 +242,26 @@ export type SearchStatus = components['schemas']['SearchStatus'];
 export type ValidationError = components['schemas']['ValidationError'];
 export type $defs = Record<string, never>;
 export interface operations {
+	home_api_home_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HomePage'];
+				};
+			};
+		};
+	};
 	search_api_search_get: {
 		parameters: {
 			query?: {

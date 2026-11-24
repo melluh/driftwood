@@ -1,0 +1,79 @@
+<!--
+	Large, auto-rotating highlights at the top of the home page. The backdrop
+	cross-fades between slides, and the next slide's backdrop is preloaded.
+-->
+<script lang="ts">
+	import { fade } from 'svelte/transition';
+	import type { MediaSummary } from '#lib/api/client.ts';
+	import { Rotation } from '#lib/home/rotation.svelte.ts';
+	import { tmdbSrcset } from '#lib/tmdb/images.ts';
+	import HeroFrame from '../media/HeroFrame.svelte';
+	import CarouselIndicators from './CarouselIndicators.svelte';
+	import FeaturedInfo from './FeaturedInfo.svelte';
+
+	let { items }: { items: MediaSummary[] } = $props();
+
+	const rotation = new Rotation(() => items.length);
+	const current = $derived(items[rotation.index] ?? items[0]);
+	const upcoming = $derived(items.length > 1 ? items[(rotation.index + 1) % items.length] : null);
+
+	function handleFocusOut(event: FocusEvent) {
+		const container = event.currentTarget as HTMLElement;
+		if (!container.contains(event.relatedTarget as Node | null)) rotation.setFocused(false);
+	}
+</script>
+
+<svelte:head>
+	{#if upcoming?.backdrop_path}
+		<link
+			rel="preload"
+			as="image"
+			imagesrcset={tmdbSrcset(upcoming.backdrop_path, 'backdrop')}
+			imagesizes="100vw"
+		/>
+	{/if}
+</svelte:head>
+
+{#if current}
+	<div
+		class="featured"
+		role="region"
+		aria-roledescription="carousel"
+		aria-label="Featured"
+		onmouseenter={() => rotation.setHovered(true)}
+		onmouseleave={() => rotation.setHovered(false)}
+		onfocusin={() => rotation.setFocused(true)}
+		onfocusout={handleFocusOut}
+	>
+		<HeroFrame backdropPath={current.backdrop_path} backdropOpacity={0.8} tall>
+			<div class="slide">
+				{#key current}
+					<div class="info" in:fade={{ duration: 500 }}>
+						<FeaturedInfo media={current} />
+					</div>
+				{/key}
+			</div>
+			{#if items.length > 1}
+				<CarouselIndicators
+					labels={items.map((item) => item.title)}
+					index={rotation.index}
+					durationMs={rotation.intervalMs}
+					paused={rotation.paused}
+					onselect={rotation.goTo}
+				/>
+			{/if}
+		</HeroFrame>
+	</div>
+{/if}
+
+<style>
+	.slide {
+		display: grid;
+		margin-bottom: var(--space-8);
+	}
+
+	/* Stack slides in one grid cell so the outgoing one never shifts layout */
+	.info {
+		grid-area: 1 / 1;
+	}
+</style>

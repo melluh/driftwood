@@ -48,6 +48,8 @@ def to_summary(media_type: MediaType, data: TmdbJson) -> MediaSummary:
         year=_year(data.get(fields["date"])),
         poster_path=data.get("poster_path"),
         backdrop_path=data.get("backdrop_path"),
+        overview=data.get("overview") or None,
+        vote_average=data.get("vote_average") or None,
         popularity=data.get("popularity"),
     )
 
@@ -59,13 +61,11 @@ def to_details(media_type: MediaType, data: TmdbJson) -> MediaDetails:
     return MediaDetails(
         **to_summary(media_type, data).model_dump(),
         tagline=data.get("tagline") or None,
-        overview=data.get("overview") or None,
         genres=[Genre(**genre) for genre in data.get("genres") or []],
         runtime=_runtime(media_type, data),
         release_date=data.get(fields["date"]) or None,
         last_air_date=data.get("last_air_date") or None,
         status=data.get("status") or None,
-        vote_average=data.get("vote_average"),
         vote_count=data.get("vote_count"),
         number_of_seasons=data.get("number_of_seasons"),
         number_of_episodes=data.get("number_of_episodes"),

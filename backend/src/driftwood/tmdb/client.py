@@ -28,6 +28,9 @@ class TmdbClient:
         self._details_cache: AsyncTtlCache[tuple[MediaType, int], TmdbJson] = AsyncTtlCache(
             ttl_seconds=settings.cache_ttl_seconds, max_entries=settings.cache_max_entries
         )
+        self._list_cache: AsyncTtlCache[str, list[TmdbJson]] = AsyncTtlCache(
+            ttl_seconds=settings.list_cache_ttl_seconds, max_entries=100
+        )
 
     async def _get(self, path: str, **params: str) -> TmdbJson:
         response = await self.http.get(
@@ -46,3 +49,12 @@ class TmdbClient:
             (media_type, media_id),
             lambda: self._get(path, append_to_response=_DETAIL_APPENDS),
         )
+
+    async def popular(self, media_type: MediaType) -> list[TmdbJson]:
+        """The first page (20 items) of TMDB's currently popular movies or TV series."""
+        path = f"/{media_type.value}/popular"
+
+        async def fetch() -> list[TmdbJson]:
+            return (await self._get(path)).get("results") or []
+
+        return await self._list_cache.get(path, fetch)

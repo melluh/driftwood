@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import type { MediaDetails } from '#lib/api/client.ts';
 	import { alternateTitle } from '#lib/media/format.ts';
-	import FadedBackdrop from './FadedBackdrop.svelte';
+	import HeroFrame from './HeroFrame.svelte';
 	import MediaTypeChip from './MediaTypeChip.svelte';
 	import PosterImage from './PosterImage.svelte';
 
@@ -11,9 +11,8 @@
 	const originalTitle = $derived(alternateTitle(media));
 </script>
 
-<section class="hero">
-	<FadedBackdrop path={media.backdrop_path} opacity={0.55} eager />
-	<div class="content">
+<HeroFrame backdropPath={media.backdrop_path}>
+	<div class="layout">
 		<div class="poster">
 			<PosterImage
 				path={media.poster_path}
@@ -37,39 +36,10 @@
 			{@render children?.()}
 		</div>
 	</div>
-</section>
+</HeroFrame>
 
 <style>
-	.hero {
-		position: relative;
-		isolation: isolate;
-		padding: calc(var(--header-height) + var(--space-12)) var(--page-gutter) var(--space-8);
-		min-height: min(80vh, 44rem);
-		display: flex;
-		align-items: flex-end;
-	}
-
-	.hero :global(.backdrop) {
-		z-index: -1;
-	}
-
-	/* Scrim: keeps text legible over bright backdrops */
-	.hero::before {
-		content: '';
-		position: absolute;
-		inset: 0;
-		z-index: -1;
-		background: linear-gradient(
-			to top right,
-			oklch(from var(--fade-to) l c h / 0.85) 15%,
-			transparent 65%
-		);
-	}
-
-	.content {
-		width: 100%;
-		max-width: var(--page-max-width);
-		margin: 0 auto;
+	.layout {
 		display: grid;
 		grid-template-columns: 10rem 1fr;
 		gap: var(--space-8);
@@ -106,13 +76,13 @@
 	}
 
 	@media (min-width: 48rem) {
-		.content {
+		.layout {
 			grid-template-columns: 16rem 1fr;
 		}
 	}
 
 	@media (max-width: 32rem) {
-		.content {
+		.layout {
 			grid-template-columns: 1fr;
 		}
 

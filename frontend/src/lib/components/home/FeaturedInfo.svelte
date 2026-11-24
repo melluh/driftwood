@@ -1,0 +1,47 @@
+<script lang="ts">
+	import type { MediaSummary } from '#lib/api/client.ts';
+	import { mediaHref } from '#lib/media/format.ts';
+	import MediaMeta from '../media/MediaMeta.svelte';
+	import LinkButton from '../ui/LinkButton.svelte';
+
+	let { media }: { media: MediaSummary } = $props();
+</script>
+
+<div class="info">
+	<MediaMeta {media} />
+	<h2>{media.title}</h2>
+	{#if media.overview}
+		<p class="overview">{media.overview}</p>
+	{/if}
+	<LinkButton href={mediaHref(media.media_type, media.id)} icon="info">More info</LinkButton>
+</div>
+
+<style>
+	.info {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--space-4);
+		max-width: 40rem;
+	}
+
+	h2 {
+		font-family: var(--font-display);
+		font-size: clamp(2.25rem, 5vw + 1rem, 4.5rem);
+		line-height: 1.05;
+		text-wrap: balance;
+		text-shadow: 0 0.125rem 1.5rem oklch(0% 0 0 / 0.5);
+	}
+
+	.overview {
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		color: var(--color-text);
+		font-size: var(--text-md);
+		line-height: 1.6;
+		text-shadow: 0 0.0625rem 0.5rem oklch(0% 0 0 / 0.6);
+	}
+</style>

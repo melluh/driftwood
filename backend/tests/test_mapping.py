@@ -45,3 +45,10 @@ def test_tv_details_use_tv_field_names() -> None:
     assert details.runtime == 47
     assert details.imdb_id == "tt0903747"
     assert details.poster_path is None
+
+
+def test_list_result_summary_includes_overview_and_rating() -> None:
+    result = {"id": 1, "name": "Show", "overview": "", "vote_average": 0, "poster_path": "/p"}
+    summary = to_summary(MediaType.tv, result)
+    assert summary.overview is None
+    assert summary.vote_average is None

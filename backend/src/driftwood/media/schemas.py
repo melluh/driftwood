@@ -24,6 +24,8 @@ class MediaSummary(Schema):
     year: int | None = None
     poster_path: str | None = None
     backdrop_path: str | None = None
+    overview: str | None = None
+    vote_average: float | None = None
     popularity: float | None = None
 
 
@@ -41,7 +43,6 @@ class CastMember(Schema):
 
 class MediaDetails(MediaSummary):
     tagline: str | None = None
-    overview: str | None = None
     genres: list[Genre] = Field(default_factory=list)
     runtime: int | None = None
     """Minutes. For TV, the typical episode runtime."""
@@ -49,7 +50,6 @@ class MediaDetails(MediaSummary):
     """Movie release date, or TV first-air date (ISO yyyy-mm-dd)."""
     last_air_date: str | None = None
     status: str | None = None
-    vote_average: float | None = None
     vote_count: int | None = None
     number_of_seasons: int | None = None
     number_of_episodes: int | None = None
@@ -67,3 +67,15 @@ class IndexStatus(StrEnum):
 class SearchStatus(Schema):
     status: IndexStatus
     entries: int
+
+
+class HomeRow(Schema):
+    id: str
+    title: str
+    items: list[MediaSummary]
+
+
+class HomePage(Schema):
+    featured: list[MediaSummary]
+    """Large, rotating highlights for the top of the page (all have a backdrop)."""
+    rows: list[HomeRow]

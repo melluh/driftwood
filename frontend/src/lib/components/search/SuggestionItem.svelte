@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { MediaSummary } from '#lib/api/client.ts';
 	import { alternateTitle, mediaHref } from '#lib/media/format.ts';
-	import MediaTypeChip from '../media/MediaTypeChip.svelte';
+	import MediaMeta from '../media/MediaMeta.svelte';
 	import TmdbImage from '../media/TmdbImage.svelte';
 
 	let {
@@ -52,8 +52,7 @@
 				<span class="original truncate">{originalTitle}</span>
 			{/if}
 			<span class="meta">
-				<MediaTypeChip type={item.media_type} />
-				{#if item.year}<span>{item.year}</span>{/if}
+				<MediaMeta media={item} />
 			</span>
 		</div>
 	</a>
@@ -96,10 +95,6 @@
 	}
 
 	.meta {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
 		font-size: var(--text-sm);
-		color: var(--color-text-muted);
 	}
 </style>

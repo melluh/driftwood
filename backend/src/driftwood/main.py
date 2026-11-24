@@ -7,6 +7,7 @@ import httpx
 from fastapi import FastAPI
 
 from driftwood.config import get_settings
+from driftwood.media.home import HomeService
 from driftwood.media.router import router as media_router
 from driftwood.media.service import MediaService
 from driftwood.titles.store import TitleIndexStore
@@ -25,7 +26,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     titles = TitleIndexStore(settings.title_index)
     limits = httpx.Limits(max_connections=20, max_keepalive_connections=20)
     async with httpx.AsyncClient(timeout=10, limits=limits) as http:
-        app.state.media_service = MediaService(titles, TmdbClient(http, settings.tmdb))
+        tmdb = TmdbClient(http, settings.tmdb)
+        app.state.media_service = MediaService(titles, tmdb)
+        app.state.home_service = HomeService(tmdb)
         index_task = asyncio.create_task(titles.run(), name="title-index")
         try:
             yield

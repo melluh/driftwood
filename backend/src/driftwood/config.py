@@ -17,6 +17,9 @@ class TmdbSettings(BaseModel):
 
     cache_max_entries: int = 5_000
 
+    list_cache_ttl_seconds: float = 3600
+    """How long list endpoints (e.g. popular media) are cached."""
+
 
 class TitleIndexSettings(BaseModel):
     directory: Path = Path("data/title_index")

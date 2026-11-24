@@ -11,9 +11,7 @@
 
 <style>
 	.page-section {
-		max-width: var(--page-max-width);
-		margin: 0 auto;
-		padding: var(--space-6) var(--page-gutter);
+		padding: var(--space-6) var(--content-inset);
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-4);
