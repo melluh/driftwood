@@ -102,7 +102,8 @@ Selection (`backend/src/driftwood/selection/`) is ported from MediaManager's slo
 - Each release goes into the first matching quality **slot**: 4K Remux, 4K Encode, 1080p Remux,
   1080p Encode, 720p. Scores only compare releases within a slot: source (WEB-DL > Remux >
   Blu-ray > WEBRip), then codec, HDR, closeness to the slot's preferred bitrate, seeders and audio.
-  Freeleech breaks ties.
+  Freeleech adds a big bonus (500, `freeleech_bonus`; partial freeleech earns its share). That beats
+  a better source, codec or size within the slot, but not missing subtitles (−1000).
 - Watch grabs the best **1080p Encode**, whose preferred bitrate is 6 Mbps (about 5.5 GB for a
   two-hour movie). If there isn't one, it falls back to 720p, then 4K Encode, 1080p Remux and
   4K Remux. The other slots' best releases are shown as manual upgrades.

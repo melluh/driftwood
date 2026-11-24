@@ -11,6 +11,7 @@
 	import Button from '../ui/Button.svelte';
 	import Chip from '../ui/Chip.svelte';
 	import Icon from '../ui/Icon.svelte';
+	import FreeleechBadge from './FreeleechBadge.svelte';
 	import NfoViewer from './NfoViewer.svelte';
 
 	let {
@@ -36,13 +37,13 @@
 		<p class="eyebrow">
 			{isRecommended ? 'Best to watch now' : 'Your pick'}
 			{#if ranked.slot_label}<Chip tone="accent">{ranked.slot_label}</Chip>{/if}
+			{#if release.freeleech}<FreeleechBadge />{/if}
 		</p>
 		<h1>{release.title}</h1>
 		<ul class="tags" aria-label="Quality">
 			{#each qualityTags(ranked) as tag (tag)}
 				<li><Chip>{tag}</Chip></li>
 			{/each}
-			{#if release.freeleech}<li><Chip tone="accent">Freeleech</Chip></li>{/if}
 		</ul>
 	</header>
 

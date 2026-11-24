@@ -129,21 +129,53 @@ def test_episode_target_filters_other_episodes_and_packs() -> None:
     assert round(selection.candidates[0].effective_mbps or 0, 1) == 5.7
 
 
-def test_release_group_tier_and_freeleech_tiebreak() -> None:
+def test_release_group_tier() -> None:
     settings = SelectionSettings(release_group_tiers=[ReleaseGroupTier(tier=1, groups=["GOOD"])])
     releases = [
-        release("Movie.2023.1080p.WEB-DL.H.264-OTHER", 5, freeleech=True),
+        release("Movie.2023.1080p.WEB-DL.H.264-OTHER", 5),
         release("Movie.2023.1080p.WEB-DL.H.264-GOOD", 5),
     ]
     selection = score_releases(releases, settings, runtime_minutes=RUNTIME)
     assert selection.candidates[0].release.title.endswith("-GOOD")
 
+
+def test_freeleech_bonus_beats_better_source_codec_and_group() -> None:
+    settings = SelectionSettings(release_group_tiers=[ReleaseGroupTier(tier=1, groups=["GOOD"])])
+    releases = [
+        release("Movie.2023.1080p.WEB-DL.H.265-GOOD", 5),
+        release("Movie.2023.1080p.WEBRip.x264-FREE", 5, freeleech=True),
+    ]
+    selection = score_releases(releases, settings, runtime_minutes=RUNTIME)
+    first = selection.candidates[0]
+    assert first.release.title.endswith("-FREE")
+    assert ("freeleech", 500) in first.factors
+    assert not any(name == "freeleech" for name, _ in selection.candidates[1].factors)
+
+
+def test_partial_freeleech_earns_part_of_the_bonus() -> None:
+    half = release("Movie.2023.1080p.WEB-DL.H.264-HALF", 5)
+    half.download_factor = 0.5
+    selection = score_releases([half], SelectionSettings(), runtime_minutes=RUNTIME)
+    assert ("freeleech", 250) in selection.candidates[0].factors
+
+
+def test_freeleech_does_not_outweigh_missing_subtitles() -> None:
+    free = release("Movie.2023.1080p.WEB-DL.H.264-FREE", 5, freeleech=True)
+    paid = release("Movie.2023.1080p.WEB-DL.H.264-PAID", 5)
+    nfos = {f"test:{free.title}": subs("nl"), f"test:{paid.title}": subs("en")}
+    selection = score_releases(
+        [free, paid], SelectionSettings(), runtime_minutes=RUNTIME, nfos=nfos
+    )
+    assert selection.candidates[0].release.title.endswith("-PAID")
+
+
+def test_freeleech_still_breaks_exact_ties_with_the_bonus_off() -> None:
     tie = score_releases(
         [
             release("Movie.2023.1080p.WEB-DL.H.264-A", 5),
             release("Movie.2023.1080p.WEB-DL.H.264-B", 5, freeleech=True),
         ],
-        SelectionSettings(),
+        SelectionSettings(freeleech_bonus=0),
         runtime_minutes=RUNTIME,
     )
     assert tie.candidates[0].release.title.endswith("-B")

@@ -141,6 +141,11 @@ class SelectionSettings(BaseModel):
     wanted_subtitles_bonus: int = 25
     """Added when the NFO lists a full (non-forced) subtitle track in a wanted language."""
 
+    freeleech_bonus: int = 500
+    """Added to freeleech releases (scaled for partial freeleech: 50% off earns half).
+    Big enough to beat a better source, codec or size within a slot, but smaller than
+    `missing_subtitles_penalty`, so freeleech never wins without wanted subtitles."""
+
     nfo_fetch_budget: int = 5
     """Most NFOs fetched per Watch. Each is a request to the indexer (1 s apart on
     TorrentLeech), so only the release about to be picked is checked, one at a time."""

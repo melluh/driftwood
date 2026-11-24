@@ -2,6 +2,7 @@
 	import type { RankedRelease } from '#lib/api/client.ts';
 	import { qualityTags, sizeSummary } from '#lib/watch/labels.ts';
 	import Icon from '../ui/Icon.svelte';
+	import FreeleechBadge from './FreeleechBadge.svelte';
 
 	let {
 		options,
@@ -28,7 +29,10 @@
 					onclick={() => onselect(option)}
 					aria-pressed={selected}
 				>
-					<span class="slot">{option.slot_label}</span>
+					<span class="slot">
+						{option.slot_label}
+						{#if option.release.freeleech}<FreeleechBadge compact />{/if}
+					</span>
 					<span class="tags">
 						{#if option.subtitle_status === 'wanted'}
 							<span class="cc" title="Has wanted subtitles">CC</span>
@@ -102,7 +106,11 @@
 	}
 
 	.slot {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
 		font-weight: 600;
+		white-space: nowrap;
 	}
 
 	.tags {

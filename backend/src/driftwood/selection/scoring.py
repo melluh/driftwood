@@ -334,6 +334,9 @@ def score_releases(
         group_tier = _group_tier(attributes.release_group, tiers)
         if group_tier is not None:
             factors.append((f"release_group_tier:{group_tier}", max(0, 100 - group_tier * 10)))
+        if release.download_factor < 1:
+            discount = 1 - max(0.0, release.download_factor)
+            factors.append(("freeleech", round(settings.freeleech_bonus * discount)))
         candidate.nfo = nfos.get(nfo_key(release))
         candidate.subtitles = subtitle_status(release, nfos, wanted)
         subtitle_points = {

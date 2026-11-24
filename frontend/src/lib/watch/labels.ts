@@ -101,6 +101,8 @@ export function factorLabel(name: string): string {
 			return `HDR: ${value === 'sdr' ? 'SDR' : value.replaceAll('_', ' + ').toUpperCase()}`;
 		case 'subtitles':
 			return SUBTITLE_FACTORS[value] ?? name;
+		case 'freeleech':
+			return 'Freeleech';
 		case 'bitrate_fit':
 			return 'Size close to target';
 		case 'seeders':

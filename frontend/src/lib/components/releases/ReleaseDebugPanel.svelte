@@ -2,7 +2,7 @@
 	import { api, type MediaType, type ReleaseSearch } from '#lib/api/client.ts';
 	import { formatBytes, formatTimestamp } from '#lib/media/format.ts';
 	import Button from '../ui/Button.svelte';
-	import Chip from '../ui/Chip.svelte';
+	import FreeleechBadge from '../watch/FreeleechBadge.svelte';
 	import Icon from '../ui/Icon.svelte';
 	import Spinner from '../ui/Spinner.svelte';
 
@@ -88,7 +88,7 @@
 									{:else}
 										{release.title}
 									{/if}
-									{#if release.freeleech}<Chip tone="accent">Freeleech</Chip>{/if}
+									{#if release.freeleech}<FreeleechBadge />{/if}
 								</td>
 								<td class="num">{formatBytes(release.size) ?? '–'}</td>
 								<td class="num">{release.seeders ?? '?'} / {release.leechers ?? '?'}</td>
