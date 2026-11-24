@@ -29,7 +29,14 @@
 					aria-pressed={selected}
 				>
 					<span class="slot">{option.slot_label}</span>
-					<span class="tags">{qualityTags(option).join(' · ')}</span>
+					<span class="tags">
+						{#if option.subtitle_status === 'wanted'}
+							<span class="cc" title="Has wanted subtitles">CC</span>
+						{:else if option.subtitle_status === 'missing'}
+							<span class="cc missing" title="No wanted subtitles">No subs</span>
+						{/if}
+						{qualityTags(option).join(' · ')}
+					</span>
 					<span class="size">{sizeSummary(option)}</span>
 					<span class="seeders">
 						<Icon name="arrow-up" size="1em" />{option.release.seeders ?? '?'}
@@ -105,6 +112,20 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.cc {
+		margin-right: var(--space-1);
+		padding: 0 0.3em;
+		border: 1px solid currentColor;
+		border-radius: var(--radius-sm);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--color-text);
+	}
+
+	.cc.missing {
+		color: var(--color-danger);
 	}
 
 	.size,

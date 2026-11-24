@@ -54,6 +54,10 @@ class Indexer(ABC):
     async def download(self, release: Release) -> bytes:
         """The .torrent file's bytes (handles auth)."""
 
+    async def fetch_nfo(self, guid: str) -> bytes | None:
+        """The release's raw NFO, or None when it has none (or the indexer doesn't serve NFOs)."""
+        return None
+
     async def test(self) -> None:
         """Log in and run an empty search; raises `IndexerError` on failure."""
         await self.search(SearchQuery())

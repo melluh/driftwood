@@ -1,0 +1,35 @@
+General
+Unique ID                                : 1234567890
+Complete name                            : The.Shawshank.Redemption.1994.1080p.BluRay.x264-GRP.mkv
+Format                                   : Matroska
+Duration                                 : 2 h 22 min
+
+Video
+ID                                       : 1
+Format                                   : AVC
+Width                                    : 1 920 pixels
+
+Audio
+ID                                       : 2
+Format                                   : DTS
+Language                                 : English
+
+Text #1
+ID                                       : 3
+Format                                   : PGS
+Title                                    : Forced
+Language                                 : English
+Forced                                   : Yes
+
+Text #2
+ID                                       : 4
+Format                                   : UTF-8
+Title                                    : SDH
+Language                                 : English
+Forced                                   : No
+
+Text #3
+ID                                       : 5
+Format                                   : UTF-8
+Language                                 : Dutch
+Forced                                   : No

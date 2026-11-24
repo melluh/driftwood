@@ -223,6 +223,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/releases/{indexer}/{guid}/nfo': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Release Nfo
+		 * @description A release's NFO and what Driftwood reads from it (subtitles, audio languages).
+		 */
+		get: operations['release_nfo_api_releases__indexer___guid__nfo_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -386,6 +406,11 @@ export interface components {
 			factors: components['schemas']['ScoreFactor'][];
 			/** Effective Mbps */
 			effective_mbps: number | null;
+			subtitle_status: components['schemas']['SubtitleStatus'] | null;
+			/** Subtitles */
+			subtitles: components['schemas']['SubtitleTrack'][];
+			/** Audio Languages */
+			audio_languages: string[];
 		};
 		/** Rejected */
 		Rejected: {
@@ -418,6 +443,20 @@ export interface components {
 			/** Episodes */
 			episodes: number[];
 		};
+		/** ReleaseNfo */
+		ReleaseNfo: {
+			/** Text */
+			text: string | null;
+			/**
+			 * Subtitles Known
+			 * @default false
+			 */
+			subtitles_known: boolean;
+			/** Subtitles */
+			subtitles: components['schemas']['SubtitleTrack'][];
+			/** Audio Languages */
+			audio_languages: string[];
+		};
 		/** ReleaseSearch */
 		ReleaseSearch: {
 			/** Query */
@@ -441,6 +480,21 @@ export interface components {
 			status: components['schemas']['IndexStatus'];
 			/** Entries */
 			entries: number;
+		};
+		/**
+		 * SubtitleStatus
+		 * @enum {string}
+		 */
+		SubtitleStatus: 'wanted' | 'missing' | 'unknown' | 'not_checked';
+		/** SubtitleTrack */
+		SubtitleTrack: {
+			/** Language */
+			language: string;
+			/**
+			 * Forced
+			 * @default false
+			 */
+			forced: boolean;
 		};
 		/**
 		 * TorrentRelease
@@ -514,6 +568,10 @@ export interface components {
 			options: components['schemas']['RankedRelease'][];
 			/** Considered */
 			considered: number;
+			/** Subtitle Languages */
+			subtitle_languages: string[];
+			/** Nfos Checked */
+			nfos_checked: number;
 			/** Rejected */
 			rejected: components['schemas']['Rejected'][];
 		};
@@ -539,9 +597,12 @@ export type MediaType = components['schemas']['MediaType'];
 export type RankedRelease = components['schemas']['RankedRelease'];
 export type Rejected = components['schemas']['Rejected'];
 export type ReleaseAttributes = components['schemas']['ReleaseAttributes'];
+export type ReleaseNfo = components['schemas']['ReleaseNfo'];
 export type ReleaseSearch = components['schemas']['ReleaseSearch'];
 export type ScoreFactor = components['schemas']['ScoreFactor'];
 export type SearchStatus = components['schemas']['SearchStatus'];
+export type SubtitleStatus = components['schemas']['SubtitleStatus'];
+export type SubtitleTrack = components['schemas']['SubtitleTrack'];
 export type TorrentRelease = components['schemas']['TorrentRelease'];
 export type ValidationError = components['schemas']['ValidationError'];
 export type WatchEpisode = components['schemas']['WatchEpisode'];
@@ -812,6 +873,38 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['WatchPlan'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	release_nfo_api_releases__indexer___guid__nfo_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				indexer: string;
+				guid: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ReleaseNfo'];
 				};
 			};
 			/** @description Validation Error */

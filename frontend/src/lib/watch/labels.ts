@@ -1,4 +1,4 @@
-import type { RankedRelease } from '#lib/api/client.ts';
+import type { RankedRelease, SubtitleTrack } from '#lib/api/client.ts';
 import { formatBytes } from '#lib/media/format.ts';
 
 const SOURCES: Record<string, string> = {
@@ -36,6 +36,59 @@ export function episodeCode(season: number, episode: number): string {
 	return `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
 }
 
+const SUBTITLE_FACTORS: Record<string, string> = {
+	wanted: 'Has wanted subtitles',
+	missing: 'No wanted subtitles',
+	unknown: 'Subtitles unknown'
+};
+
+const LANGUAGE_NAMES = new Intl.DisplayNames(['en'], { type: 'language' });
+
+/** `en` → `English`. */
+export function languageName(code: string): string {
+	if (code === 'und') return 'Untagged';
+	try {
+		return LANGUAGE_NAMES.of(code) ?? code;
+	} catch {
+		return code;
+	}
+}
+
+function trackList(tracks: SubtitleTrack[]): string {
+	return tracks
+		.map((track) => `${languageName(track.language)}${track.forced ? ' (forced)' : ''}`)
+		.join(', ');
+}
+
+export type SubtitleTone = 'good' | 'bad' | 'neutral';
+
+/** What to say about a release's subtitles, given the wanted languages. */
+export function subtitleSummary(
+	ranked: RankedRelease,
+	wanted: string[]
+): { text: string; tone: SubtitleTone } | null {
+	const listed = trackList(ranked.subtitles);
+	switch (ranked.subtitle_status) {
+		case 'wanted':
+			return { text: listed, tone: 'good' };
+		case 'missing': {
+			const wantedNames = wanted.map(languageName).join(' or ');
+			return { text: listed ? `No ${wantedNames} (only ${listed})` : 'None', tone: 'bad' };
+		}
+		case 'unknown':
+			return { text: listed || "Unknown: no NFO, or it doesn't say", tone: 'neutral' };
+		case 'not_checked':
+			return { text: 'Not checked', tone: 'neutral' };
+		default:
+			return listed ? { text: listed, tone: 'neutral' } : null;
+	}
+}
+
+/** `+25` / `−1000` */
+export function formatPoints(points: number): string {
+	return points < 0 ? `−${-points}` : `+${points}`;
+}
+
 /** Score factor names (`source:web-dl`) as readable labels. */
 export function factorLabel(name: string): string {
 	const [kind, value] = name.split(':', 2);
@@ -46,6 +99,8 @@ export function factorLabel(name: string): string {
 			return `Codec: ${CODECS[value] ?? value}`;
 		case 'hdr':
 			return `HDR: ${value === 'sdr' ? 'SDR' : value.replaceAll('_', ' + ').toUpperCase()}`;
+		case 'subtitles':
+			return SUBTITLE_FACTORS[value] ?? name;
 		case 'bitrate_fit':
 			return 'Size close to target';
 		case 'seeders':

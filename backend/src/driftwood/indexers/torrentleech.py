@@ -356,6 +356,27 @@ class TorrentLeechIndexer(SessionIndexer):
             ) from exc
         return parse_search_results(data, self.http.base_url, self._timezone)
 
+    # NFO
+
+    async def fetch_nfo(self, guid: str) -> bytes | None:
+        """`nfo/download/{fid}`; None when the torrent has no NFO."""
+        path = f"nfo/download/{quote(guid, safe='')}"
+        await self.ensure_logged_in()
+        generation = self._session_generation
+        response = await self.http.get(path)
+        if response.status_code == httpx.codes.NOT_FOUND:
+            return None
+        if self.is_logged_out(response):
+            await self._relogin(generation)
+            response = await self.http.get(path)
+            if response.status_code == httpx.codes.NOT_FOUND:
+                return None
+            if self.is_logged_out(response):
+                raise AuthError("TorrentLeech: still logged out right after logging in")
+        if _is_html(response) or not response.content.strip():
+            return None  # a site page (e.g. "no NFO") rather than the file
+        return response.content
+
     # Download
 
     async def download(self, release: Release) -> bytes:

@@ -99,3 +99,42 @@ def test_watch_endpoint_without_indexers() -> None:
     body = watch_client(IndexerManager([])).get("/api/media/movie/278/watch").json()
     assert body["pick"] is None
     assert body["options"] == []
+
+
+def test_watch_verifies_subtitles_through_nfos() -> None:
+    # The 1080p pick only has Dutch subtitles, so Watch checks the next
+    # candidate (the 720p) and picks that one, which has English.
+    site = FakeTorrentLeech(
+        nfos={"240001": b"Subtitles: Dutch", "240003": b"Subtitles...: English, Dutch"}
+    )
+    api = watch_client(IndexerManager([make_indexer(site)]))
+    body = api.get("/api/media/movie/278/watch").json()
+    assert body["pick"]["release"]["guid"] == "240003"
+    assert body["pick"]["subtitle_status"] == "wanted"
+    assert body["pick"]["subtitles"] == [
+        {"language": "en", "forced": False},
+        {"language": "nl", "forced": False},
+    ]
+    assert body["nfos_checked"] == 2
+    assert body["subtitle_languages"] == ["en"]
+    by_slot = {o["slot"]: o for o in body["options"]}
+    assert by_slot["1080p_encode"]["subtitle_status"] == "missing"
+    assert by_slot["4k_encode"]["subtitle_status"] == "not_checked"
+    assert [p for p in site.paths if p.startswith("/nfo/")] == [
+        "/nfo/download/240001",
+        "/nfo/download/240003",
+    ]
+
+
+def test_release_nfo_endpoint() -> None:
+    site = FakeTorrentLeech(
+        nfos={"240001": "Subtitles: English, French\nNotes: très bien".encode("cp437")}
+    )
+    api = client(IndexerManager([make_indexer(site)]))
+    body = api.get("/api/releases/torrentleech/240001/nfo").json()
+    assert body["text"] == "Subtitles: English, French\nNotes: très bien"
+    assert body["subtitles_known"] is True
+    assert [s["language"] for s in body["subtitles"]] == ["en", "fr"]
+
+    assert api.get("/api/releases/torrentleech/999/nfo").json()["text"] is None
+    assert api.get("/api/releases/nope/1/nfo").status_code == httpx.codes.BAD_GATEWAY

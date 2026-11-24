@@ -105,9 +105,22 @@ Selection (`backend/src/driftwood/selection/`) is ported from MediaManager's slo
   two-hour movie). If there isn't one, it falls back to 720p, then 4K Encode, 1080p Remux and
   4K Remux. The other slots' best releases are shown as manual upgrades.
 - Series watch a single episode (`?season=&episode=`, default S01E01).
+- **Subtitles** are checked against the release's NFO (TorrentLeech:
+  `nfo/download/{id}`). It reads MediaInfo dumps (`Text #n` sections) and scene-style
+  `Subtitles: English, Dutch` lines. A release whose NFO lists no wanted language (forced tracks
+  don't count) loses 1000 points within its slot. So does one with no NFO, an NFO that doesn't
+  mention subtitles, or only untagged tracks: unconfirmed counts as missing
+  (`unknown_subtitles_penalty` can set it apart). Wanted subtitles add 25. If the best release of the 1080p slot turns out to have no wanted
+  subtitles, Watch moves on to the next slot's best release.
+- NFOs are fetched one at a time and only for the release about to be picked: the pick, and the
+  next one if the pick is demoted, up to 5 per Watch. Each is an indexer request, 4.1 s apart on
+  TorrentLeech. NFOs are cached for a day. `GET /api/releases/{indexer}/{guid}/nfo` returns an NFO
+  and what was read from it; the watch screen shows it under "NFO".
 
-Slots, the watch order, release group tiers and the HDR ladder are configurable under
-`DRIFTWOOD_SELECTION__*` (see `selection/config.py`).
+Slots, the watch order, release group tiers, the HDR ladder, the wanted subtitle languages and
+the penalties are configurable under `DRIFTWOOD_SELECTION__*` (see `selection/config.py`), e.g.
+`DRIFTWOOD_SELECTION__SUBTITLE_LANGUAGES='["en", "nl"]'`. Names and ISO codes both work; an empty
+list turns subtitle checks off.
 
 ## Development
 

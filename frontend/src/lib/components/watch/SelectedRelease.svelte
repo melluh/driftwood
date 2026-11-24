@@ -1,22 +1,34 @@
 <script lang="ts">
 	import type { RankedRelease } from '#lib/api/client.ts';
-	import { factorLabel, qualityTags, sizeSummary } from '#lib/watch/labels.ts';
+	import {
+		factorLabel,
+		formatPoints,
+		languageName,
+		qualityTags,
+		sizeSummary,
+		subtitleSummary
+	} from '#lib/watch/labels.ts';
 	import Button from '../ui/Button.svelte';
 	import Chip from '../ui/Chip.svelte';
 	import Icon from '../ui/Icon.svelte';
+	import NfoViewer from './NfoViewer.svelte';
 
 	let {
 		ranked,
 		isRecommended,
+		wantedSubtitles,
 		onreset
 	}: {
 		ranked: RankedRelease;
 		/** False when the user swapped in a higher-quality option. */
 		isRecommended: boolean;
+		/** Wanted subtitle languages (ISO codes). */
+		wantedSubtitles: string[];
 		onreset: () => void;
 	} = $props();
 
 	const release = $derived(ranked.release);
+	const subtitles = $derived(subtitleSummary(ranked, wantedSubtitles));
 </script>
 
 <article class="card">
@@ -53,6 +65,21 @@
 				<dd>{ranked.attributes.release_group}</dd>
 			</div>
 		{/if}
+		{#if subtitles}
+			<div class="wide">
+				<dt>Subtitles</dt>
+				<dd class="subtitles {subtitles.tone}">
+					{#if subtitles.tone === 'bad'}<Icon name="alert" size="1em" />{/if}
+					{subtitles.text}
+				</dd>
+			</div>
+		{/if}
+		{#if ranked.audio_languages.length}
+			<div>
+				<dt>Audio</dt>
+				<dd>{ranked.audio_languages.map(languageName).join(', ')}</dd>
+			</div>
+		{/if}
 	</dl>
 
 	<div class="actions">
@@ -75,11 +102,20 @@
 		<summary>Why this release · score {ranked.score}</summary>
 		<ul class="factors">
 			{#each ranked.factors as factor (factor.name)}
-				<li><span>{factorLabel(factor.name)}</span><span class="points">+{factor.points}</span></li>
+				<li>
+					<span>{factorLabel(factor.name)}</span>
+					<span class="points" class:negative={factor.points < 0}>
+						{formatPoints(factor.points)}
+					</span>
+				</li>
 			{/each}
 		</ul>
 		<p class="note">Scores only compare releases within the same quality slot.</p>
 	</details>
+
+	{#key release.indexer + release.guid}
+		<NfoViewer indexer={release.indexer} guid={release.guid} />
+	{/key}
 </article>
 
 <style>
@@ -145,6 +181,37 @@
 	dd {
 		margin: 0;
 		font-variant-numeric: tabular-nums;
+	}
+
+	.wide {
+		grid-column: 1 / -1;
+	}
+
+	.subtitles {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
+	}
+
+	.subtitles.good {
+		color: var(--color-text);
+	}
+
+	.subtitles.bad {
+		color: var(--color-danger);
+	}
+
+	.subtitles.neutral {
+		color: var(--color-text-muted);
+	}
+
+	.points.negative {
+		color: var(--color-danger);
+	}
+
+	details + :global(details) {
+		border-top: none;
+		padding-top: 0;
 	}
 
 	.actions {

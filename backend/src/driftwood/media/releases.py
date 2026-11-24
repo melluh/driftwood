@@ -14,6 +14,7 @@ from driftwood.media.schemas import (
     ReleaseSearch,
     TorrentRelease,
 )
+from driftwood.selection.nfo import decode_nfo
 from driftwood.tmdb.cache import AsyncTtlCache
 from driftwood.tmdb.client import TmdbClient, TmdbNotFoundError
 
@@ -96,6 +97,10 @@ class ReleaseLookup:
     result: SearchResult
 
 
+NFO_CACHE_TTL_SECONDS = 24 * 3600
+"""NFOs never change; this only bounds memory use over time."""
+
+
 class _FailedSearch(Exception):
     """Carries a partly failed result past the cache, so it isn't stored."""
 
@@ -109,6 +114,9 @@ class ReleaseService:
     ) -> None:
         self.tmdb = tmdb
         self.indexers = indexers
+        self._nfo_cache: AsyncTtlCache[tuple[str, str], str | None] = AsyncTtlCache(
+            ttl_seconds=NFO_CACHE_TTL_SECONDS, max_entries=2000
+        )
         self._cache: AsyncTtlCache[SearchQuery, SearchResult] = AsyncTtlCache(
             ttl_seconds=cache_ttl_seconds, max_entries=500
         )
@@ -124,6 +132,15 @@ class ReleaseService:
             return await self._cache.get(query, fetch)
         except _FailedSearch as failed:
             return failed.result
+
+    async def nfo_text(self, indexer_id: str, guid: str) -> str | None:
+        """A release's NFO as text (None if it has none). Cached; raises `IndexerError`."""
+
+        async def fetch() -> str | None:
+            content = await self.indexers.fetch_nfo(indexer_id, guid)
+            return decode_nfo(content) if content else None
+
+        return await self._nfo_cache.get((indexer_id, guid), fetch)
 
     async def find(
         self,

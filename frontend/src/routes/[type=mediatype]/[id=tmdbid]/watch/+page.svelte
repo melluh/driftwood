@@ -8,7 +8,7 @@
 	import Button from '#lib/components/ui/Button.svelte';
 	import Icon from '#lib/components/ui/Icon.svelte';
 	import { mediaHref } from '#lib/media/format.ts';
-	import { episodeCode } from '#lib/watch/labels.ts';
+	import { episodeCode, languageName } from '#lib/watch/labels.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -96,6 +96,7 @@
 			<SelectedRelease
 				ranked={shown}
 				isRecommended={!chosen || chosen.release.guid === plan.pick?.release.guid}
+				wantedSubtitles={plan.subtitle_languages}
 				onreset={() => (chosen = null)}
 			/>
 		{:else}
@@ -138,6 +139,10 @@
 				<dd>{plan.indexers.join(', ') || 'none'}</dd>
 				<dt>Releases found</dt>
 				<dd>{plan.considered}</dd>
+				<dt>Wanted subtitles</dt>
+				<dd>{plan.subtitle_languages.map(languageName).join(', ') || 'any (checks off)'}</dd>
+				<dt>NFOs checked</dt>
+				<dd>{plan.nfos_checked}</dd>
 				{#each plan.rejected as rejection (rejection.reason)}
 					<dt>Skipped: {rejection.reason}</dt>
 					<dd>{rejection.count}</dd>

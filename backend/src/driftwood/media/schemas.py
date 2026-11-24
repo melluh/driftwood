@@ -136,6 +136,19 @@ class ScoreFactor(Schema):
     points: int
 
 
+class SubtitleTrack(Schema):
+    language: str
+    """ISO 639-1 code (`en`) where one exists; `und` when the NFO doesn't say."""
+    forced: bool = False
+
+
+class SubtitleStatus(StrEnum):
+    wanted = "wanted"
+    missing = "missing"
+    unknown = "unknown"
+    not_checked = "not_checked"
+
+
 class RankedRelease(Schema):
     release: TorrentRelease
     attributes: ReleaseAttributes
@@ -146,6 +159,11 @@ class RankedRelease(Schema):
     """Only comparable with releases in the same slot."""
     factors: list[ScoreFactor]
     effective_mbps: float | None = None
+    subtitle_status: SubtitleStatus | None = None
+    """From the NFO: `wanted` (has a wanted language), `missing`, `unknown` (no NFO or it
+    doesn't say) or `not_checked`. None when no subtitle languages are configured."""
+    subtitles: list[SubtitleTrack] = Field(default_factory=list)
+    audio_languages: list[str] = Field(default_factory=list)
 
 
 class Rejected(Schema):
@@ -172,4 +190,16 @@ class WatchPlan(Schema):
     """The best release of every slot, best quality first (the pick included)."""
     considered: int
     """Releases the indexers returned."""
+    subtitle_languages: list[str]
+    """Wanted subtitle languages (ISO codes); empty when subtitle checks are off."""
+    nfos_checked: int
+    """NFOs fetched to verify subtitles."""
     rejected: list[Rejected]
+
+
+class ReleaseNfo(Schema):
+    text: str | None = None
+    """The NFO as text; None when the release has none."""
+    subtitles_known: bool = False
+    subtitles: list[SubtitleTrack] = Field(default_factory=list)
+    audio_languages: list[str] = Field(default_factory=list)

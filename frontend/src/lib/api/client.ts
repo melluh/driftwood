@@ -24,8 +24,11 @@ export type {
 	MediaType,
 	RankedRelease,
 	Rejected,
+	ReleaseNfo,
 	ReleaseSearch,
 	SearchStatus,
+	SubtitleStatus,
+	SubtitleTrack,
 	TorrentRelease,
 	WatchPlan
 } from './schema';

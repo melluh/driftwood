@@ -1,7 +1,14 @@
 from driftwood.indexers.models import Release
 from driftwood.selection.classification import classify_release
 from driftwood.selection.config import ReleaseGroupTier, SelectionSettings
-from driftwood.selection.scoring import EpisodeTarget, Rejection, score_releases
+from driftwood.selection.nfo import NfoInfo, SubtitleTrack
+from driftwood.selection.scoring import (
+    EpisodeTarget,
+    Rejection,
+    Selection,
+    SubtitleStatus,
+    score_releases,
+)
 
 GB = 1024**3
 RUNTIME = 120  # minutes: 1 GB ≈ 1.19 Mbps
@@ -140,3 +147,124 @@ def test_release_group_tier_and_freeleech_tiebreak() -> None:
         runtime_minutes=RUNTIME,
     )
     assert tie.candidates[0].release.title.endswith("-B")
+
+
+# Subtitles (from NFOs)
+
+SMALL = "Movie.2023.1080p.WEB-DL.H.264-SMALL"
+OTHER = "Movie.2023.1080p.WEB-DL.H.264-OTHER"
+SD = "Movie.2023.720p.WEB-DL.H.264-SD"
+WATCH = SelectionSettings().watch_slots
+
+
+def subs(*languages: str, forced: bool = False) -> NfoInfo:
+    return NfoInfo(tuple(SubtitleTrack(lang, forced) for lang in languages), subtitles_known=True)
+
+
+def key(title: str) -> str:
+    return f"test:{title}"
+
+
+def subtitle_releases() -> list[Release]:
+    return [release(SMALL, 5), release(OTHER, 8), release(SD, 2.5)]
+
+
+def scored(nfos: dict[str, NfoInfo | None], settings: SelectionSettings | None = None) -> Selection:
+    return score_releases(
+        subtitle_releases(), settings or SelectionSettings(), runtime_minutes=RUNTIME, nfos=nfos
+    )
+
+
+def test_unchecked_releases_get_no_subtitle_factor() -> None:
+    selection = scored({})
+    assert all(c.subtitles is SubtitleStatus.NOT_CHECKED for c in selection.candidates)
+    assert not any(
+        name.startswith("subtitles") for c in selection.candidates for name, _ in c.factors
+    )
+    target = selection.next_nfo_target(WATCH)
+    assert target is not None and target.release.title == SMALL
+
+
+def test_missing_subtitles_demote_a_release_within_its_slot() -> None:
+    selection = scored({key(SMALL): subs("nl"), key(OTHER): subs("en", "nl")})
+    by_title = {c.release.title: c for c in selection.candidates}
+    assert by_title[SMALL].subtitles is SubtitleStatus.MISSING
+    assert ("subtitles:missing", -1000) in by_title[SMALL].factors
+    assert by_title[OTHER].subtitles is SubtitleStatus.WANTED
+    assert ("subtitles:wanted", 25) in by_title[OTHER].factors
+    pick = selection.watch_pick(WATCH)
+    assert pick is not None and pick.release.title == OTHER
+    assert selection.next_nfo_target(WATCH) is None  # the pick is verified
+
+
+def test_next_target_is_the_new_leader_after_a_demotion() -> None:
+    target = scored({key(SMALL): subs()}).next_nfo_target(WATCH)
+    assert target is not None and target.release.title == OTHER
+
+
+def test_forced_only_and_unknown_subtitles() -> None:
+    selection = scored({key(SMALL): subs("en", forced=True), key(OTHER): None})
+    by_title = {c.release.title: c for c in selection.candidates}
+    assert by_title[SMALL].subtitles is SubtitleStatus.MISSING
+    assert by_title[OTHER].subtitles is SubtitleStatus.UNKNOWN
+    assert ("subtitles:unknown", -1000) in by_title[OTHER].factors
+    untagged = scored({key(SMALL): subs("und")})
+    assert {c.release.title: c for c in untagged.candidates}[
+        SMALL
+    ].subtitles is SubtitleStatus.UNKNOWN
+
+
+def test_watch_moves_to_a_lower_slot_with_subtitles() -> None:
+    selection = scored({key(SMALL): subs(), key(OTHER): subs("de"), key(SD): subs("en")})
+    pick = selection.watch_pick(WATCH)
+    assert pick is not None and pick.release.title == SD
+
+
+def test_watch_falls_back_to_first_slot_when_nothing_has_subtitles() -> None:
+    selection = scored({key(SMALL): subs(), key(OTHER): subs(), key(SD): subs()})
+    pick = selection.watch_pick(WATCH)
+    assert pick is not None and pick.slot is not None and pick.slot.name == "1080p_encode"
+    assert selection.next_nfo_target(WATCH) is None
+
+
+def test_subtitle_languages_accept_names_and_codes() -> None:
+    settings = SelectionSettings(subtitle_languages=["Dutch", "eng"])
+    selection = scored({key(SMALL): subs("nl")}, settings)
+    assert {c.release.title: c for c in selection.candidates}[
+        SMALL
+    ].subtitles is SubtitleStatus.WANTED
+
+
+def test_no_subtitle_languages_turns_checks_off() -> None:
+    selection = scored({}, SelectionSettings(subtitle_languages=[]))
+    assert selection.candidates[0].subtitles is None
+    assert selection.next_nfo_target(WATCH) is None
+
+
+def test_nfo_silent_on_subtitles_costs_as_much_as_the_wrong_language() -> None:
+    silent = NfoInfo(subtitles_known=False, audio_languages=("en",))
+    selection = scored({key(SMALL): silent, key(OTHER): subs("de")})
+    by_title = {c.release.title: c for c in selection.candidates}
+    assert ("subtitles:unknown", -1000) in by_title[SMALL].factors
+    assert ("subtitles:missing", -1000) in by_title[OTHER].factors
+
+
+def test_unknown_penalty_follows_missing_unless_set() -> None:
+    assert (
+        SelectionSettings(missing_subtitles_penalty=800).effective_unknown_subtitles_penalty == 800
+    )
+    settings = SelectionSettings(unknown_subtitles_penalty=250)
+    assert settings.effective_unknown_subtitles_penalty == 250
+    selection = scored({key(SMALL): None}, settings)
+    by_title = {c.release.title: c for c in selection.candidates}
+    assert ("subtitles:unknown", -250) in by_title[SMALL].factors
+
+
+def test_freeleech_does_not_outweigh_unconfirmed_subtitles() -> None:
+    free = release("Movie.2023.1080p.WEB-DL.H.264-FREE", 5, freeleech=True)
+    paid = release("Movie.2023.1080p.WEB-DL.H.264-PAID", 5)
+    nfos = {f"test:{free.title}": NfoInfo(), f"test:{paid.title}": subs("en")}
+    selection = score_releases(
+        [free, paid], SelectionSettings(), runtime_minutes=RUNTIME, nfos=nfos
+    )
+    assert selection.candidates[0].release.title.endswith("-PAID")

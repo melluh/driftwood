@@ -58,6 +58,14 @@ class IndexerManager:
                 result.releases.extend(outcome)
         return result
 
+    async def fetch_nfo(self, indexer_id: str, guid: str) -> bytes | None:
+        """A release's NFO from the indexer that found it. Raises `IndexerError` on failure."""
+        for indexer in self.indexers:
+            if indexer.id == indexer_id:
+                async with asyncio.timeout(self.timeout_seconds):
+                    return await indexer.fetch_nfo(guid)
+        raise IndexerError(f"no enabled indexer {indexer_id!r}")
+
     async def aclose(self) -> None:
         for indexer in self.indexers:
             with contextlib.suppress(Exception):

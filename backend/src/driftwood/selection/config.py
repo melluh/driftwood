@@ -117,3 +117,30 @@ class SelectionSettings(BaseModel):
     """`multi`, `nordic`, `german_dl`, `dubbed`: rejected unless listed here."""
 
     min_seeders: int = 3
+
+    subtitle_languages: list[str] = Field(default_factory=lambda: ["en"])
+    """Wanted subtitle languages, as names or ISO codes (`English`, `en`, `eng`). Releases
+    are checked against their NFO; an empty list turns subtitle checks (and NFO fetching) off.
+    Set as JSON: `DRIFTWOOD_SELECTION__SUBTITLE_LANGUAGES='["en", "nl"]'`."""
+
+    missing_subtitles_penalty: int = 1000
+    """Subtracted when the NFO lists the subtitles and none is wanted (or there are none).
+    About the size of the whole source-quality scale, so a subtitled release wins its slot."""
+
+    unknown_subtitles_penalty: int | None = None
+    """Subtracted when the release has no NFO, its NFO doesn't mention subtitles, or it
+    lists a subtitle track without a language. None (the default) means the same as
+    `missing_subtitles_penalty`: unconfirmed subtitles count as missing ones."""
+
+    @property
+    def effective_unknown_subtitles_penalty(self) -> int:
+        if self.unknown_subtitles_penalty is None:
+            return self.missing_subtitles_penalty
+        return self.unknown_subtitles_penalty
+
+    wanted_subtitles_bonus: int = 25
+    """Added when the NFO lists a full (non-forced) subtitle track in a wanted language."""
+
+    nfo_fetch_budget: int = 5
+    """Most NFOs fetched per Watch. Each is a request to the indexer (4.1 s apart on
+    TorrentLeech), so only the release about to be picked is checked, one at a time."""

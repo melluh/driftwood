@@ -11,7 +11,9 @@ grabs for immediate watching, where a smaller file and a fast swarm matter.
 
 import math
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from enum import StrEnum
 
 from driftwood.indexers.models import Release
 from driftwood.selection.classification import ReleaseAttributes, classify_release
@@ -23,6 +25,7 @@ from driftwood.selection.config import (
     SlotCondition,
     SlotDefinition,
 )
+from driftwood.selection.nfo import NfoInfo, normalize_language
 
 SOURCE_QUALITY_SCORE = {
     "web-dl": 1000,
@@ -58,6 +61,53 @@ class EpisodeTarget:
     episode: int
 
 
+class SubtitleStatus(StrEnum):
+    WANTED = "wanted"
+    """The NFO lists a full subtitle track in a wanted language."""
+    MISSING = "missing"
+    """The NFO lists the subtitles (or says there are none), and none is wanted."""
+    UNKNOWN = "unknown"
+    """No NFO, or the NFO doesn't say."""
+    NOT_CHECKED = "not_checked"
+    """The NFO wasn't fetched (only likely picks are checked)."""
+
+
+ACCEPTABLE_SUBTITLES = {SubtitleStatus.WANTED, SubtitleStatus.NOT_CHECKED, None}
+
+type NfoResults = Mapping[str, NfoInfo | None]
+"""Fetched NFOs by `nfo_key`; None means the release has no NFO."""
+
+
+def nfo_key(release: Release) -> str:
+    return f"{release.indexer_id}:{release.guid}"
+
+
+def wanted_languages(settings: SelectionSettings) -> frozenset[str]:
+    return frozenset(
+        normalize_language(lang) or lang.lower() for lang in settings.subtitle_languages
+    )
+
+
+def subtitle_status(
+    release: Release, nfos: NfoResults, wanted: frozenset[str]
+) -> SubtitleStatus | None:
+    """None when subtitle checks are off (no wanted languages)."""
+    if not wanted:
+        return None
+    key = nfo_key(release)
+    if key not in nfos:
+        return SubtitleStatus.NOT_CHECKED
+    nfo = nfos[key]
+    if nfo is None or not nfo.subtitles_known:
+        return SubtitleStatus.UNKNOWN
+    full_tracks = [track for track in nfo.subtitles if not track.forced]
+    if any(track.language in wanted for track in full_tracks):
+        return SubtitleStatus.WANTED
+    if any(track.language == "und" for track in full_tracks):
+        return SubtitleStatus.UNKNOWN  # MediaInfo track without a language tag
+    return SubtitleStatus.MISSING
+
+
 @dataclass
 class Candidate:
     release: Release
@@ -67,6 +117,8 @@ class Candidate:
     effective_mbps: float | None = None
     score: int = 0
     factors: list[tuple[str, int]] = field(default_factory=list)
+    nfo: NfoInfo | None = None
+    subtitles: SubtitleStatus | None = None
 
 
 @dataclass
@@ -84,14 +136,30 @@ class Selection:
                 winners.setdefault(candidate.slot_index, candidate)
         return [winners[index] for index in sorted(winners)]
 
+    def _watch_leaders(self, watch_slots: list[str]) -> list[Candidate]:
+        winners = {c.slot.name: c for c in self.slot_winners if c.slot}
+        return [winners[name] for name in watch_slots if name in winners]
+
     def watch_pick(self, watch_slots: list[str]) -> Candidate | None:
-        """The best release of the first `watch_slots` entry that has one."""
-        winners = {
-            candidate.slot.name: candidate for candidate in self.slot_winners if candidate.slot
-        }
-        for name in watch_slots:
-            if name in winners:
-                return winners[name]
+        """
+        The best release of the first `watch_slots` entry whose best release has
+        (or may have) wanted subtitles; failing that, the first slot's best.
+        """
+        leaders = self._watch_leaders(watch_slots)
+        acceptable = (c for c in leaders if c.subtitles in ACCEPTABLE_SUBTITLES)
+        return next(acceptable, leaders[0] if leaders else None)
+
+    def next_nfo_target(self, watch_slots: list[str]) -> Candidate | None:
+        """
+        The release whose NFO to fetch next: the would-be pick, while it is
+        unchecked. None once the pick is settled (checked and fine, or nothing
+        left to check). Checking one at a time keeps indexer requests minimal.
+        """
+        for leader in self._watch_leaders(watch_slots):
+            if leader.subtitles is SubtitleStatus.NOT_CHECKED:
+                return leader
+            if leader.subtitles in ACCEPTABLE_SUBTITLES:
+                return None
         return None
 
 
@@ -216,11 +284,17 @@ def score_releases(
     *,
     runtime_minutes: int | None,
     episode: EpisodeTarget | None = None,
+    nfos: NfoResults | None = None,
 ) -> Selection:
-    """Classify, filter, slot and score. CPU-bound (guessit): run it off the event loop."""
+    """
+    Classify, filter, slot and score. `nfos` holds the NFOs fetched so far
+    (see `Selection.next_nfo_target`). CPU-bound (guessit): run it off the event loop.
+    """
     candidates: list[Candidate] = []
     rejected: Counter[str] = Counter()
     tiers = settings.release_group_tiers
+    nfos = nfos or {}
+    wanted = wanted_languages(settings)
 
     for release in releases:
         attributes = classify_release(release.title)
@@ -260,6 +334,17 @@ def score_releases(
         group_tier = _group_tier(attributes.release_group, tiers)
         if group_tier is not None:
             factors.append((f"release_group_tier:{group_tier}", max(0, 100 - group_tier * 10)))
+        candidate.nfo = nfos.get(nfo_key(release))
+        candidate.subtitles = subtitle_status(release, nfos, wanted)
+        subtitle_points = {
+            SubtitleStatus.WANTED: settings.wanted_subtitles_bonus,
+            SubtitleStatus.MISSING: -settings.missing_subtitles_penalty,
+            SubtitleStatus.UNKNOWN: -settings.effective_unknown_subtitles_penalty,
+        }
+        if candidate.subtitles in subtitle_points:
+            factors.append(
+                (f"subtitles:{candidate.subtitles}", subtitle_points[candidate.subtitles])
+            )
         candidate.score = sum(points for _, points in factors)
         candidate.factors = [(name, points) for name, points in factors if points]
         candidates.append(candidate)
