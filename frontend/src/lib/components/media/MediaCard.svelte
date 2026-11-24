@@ -2,6 +2,7 @@
 <script lang="ts">
 	import type { MediaSummary } from '#lib/api/client.ts';
 	import { mediaHref } from '#lib/media/format.ts';
+	import { expandFrom, isPlainClick } from '#lib/transitions/media-expand.ts';
 	import PosterImage from './PosterImage.svelte';
 
 	let {
@@ -12,10 +13,16 @@
 		/** Rendered poster width, for image size selection. */
 		sizes: string;
 	} = $props();
+
+	let card: HTMLAnchorElement | undefined = $state();
+
+	function handleClick(event: MouseEvent) {
+		if (card && isPlainClick(event)) expandFrom(card);
+	}
 </script>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -- mediaHref() resolves the route -->
-<a href={mediaHref(media.media_type, media.id)} class="card">
+<a href={mediaHref(media.media_type, media.id)} class="card" bind:this={card} onclick={handleClick}>
 	<!-- eslint-enable svelte/no-navigation-without-resolve -->
 	<div class="poster">
 		<PosterImage path={media.poster_path} title={media.title} {sizes} />

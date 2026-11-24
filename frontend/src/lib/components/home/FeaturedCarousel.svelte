@@ -7,6 +7,7 @@
 	import type { MediaSummary } from '#lib/api/client.ts';
 	import { Rotation } from '#lib/home/rotation.svelte.ts';
 	import { tmdbSrcset } from '#lib/tmdb/images.ts';
+	import { expandFrom } from '#lib/transitions/media-expand.ts';
 	import HeroFrame from '../media/HeroFrame.svelte';
 	import CarouselIndicators from './CarouselIndicators.svelte';
 	import FeaturedInfo from './FeaturedInfo.svelte';
@@ -16,6 +17,13 @@
 	const rotation = new Rotation(() => items.length);
 	const current = $derived(items[rotation.index] ?? items[0]);
 	const upcoming = $derived(items.length > 1 ? items[(rotation.index + 1) % items.length] : null);
+
+	let container: HTMLElement | undefined = $state();
+
+	/** The details page grows out of the whole hero, which shares its backdrop. */
+	function expandFromHero(link: HTMLAnchorElement) {
+		expandFrom(link, { bounds: container, rounded: false });
+	}
 
 	function handleFocusOut(event: FocusEvent) {
 		const container = event.currentTarget as HTMLElement;
@@ -36,6 +44,7 @@
 
 {#if current}
 	<div
+		bind:this={container}
 		class="featured"
 		role="region"
 		aria-roledescription="carousel"
@@ -47,7 +56,7 @@
 			<div class="slide">
 				{#key current}
 					<div class="info" in:fade={{ duration: 500 }}>
-						<FeaturedInfo media={current} />
+						<FeaturedInfo media={current} onselect={expandFromHero} />
 					</div>
 				{/key}
 			</div>

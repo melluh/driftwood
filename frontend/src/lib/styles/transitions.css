@@ -1,0 +1,52 @@
+/*
+ * View transition styles. See #lib/transitions/media-expand.ts for how the
+ * media-expand transition is started and what sets the --expand-* insets.
+ */
+
+/* The header stays put across page transitions instead of being revealed */
+::view-transition-group(app-header) {
+	animation-duration: var(--duration-expand);
+}
+
+/* Media card -> details page: the new page grows out of the card's bounds */
+:root[data-transition='media-expand'] {
+	&::view-transition-old(root),
+	&::view-transition-new(root) {
+		mix-blend-mode: normal;
+		animation-duration: var(--duration-expand);
+		animation-timing-function: var(--ease-emphasized);
+		animation-fill-mode: both;
+	}
+
+	&::view-transition-old(root) {
+		animation-name: media-expand-recede;
+	}
+
+	&::view-transition-new(root) {
+		animation-name: media-expand-reveal;
+	}
+}
+
+@keyframes media-expand-reveal {
+	from {
+		clip-path: inset(
+			var(--expand-top) var(--expand-right) var(--expand-bottom) var(--expand-left) round
+				var(--radius-md)
+		);
+		opacity: 0;
+	}
+	/* Fade in early so the card's area doesn't pop to the new page */
+	30% {
+		opacity: 1;
+	}
+	to {
+		clip-path: inset(0 round 0);
+	}
+}
+
+@keyframes media-expand-recede {
+	to {
+		transform: scale(0.96);
+		filter: brightness(0.5);
+	}
+}

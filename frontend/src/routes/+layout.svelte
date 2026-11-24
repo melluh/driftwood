@@ -3,11 +3,13 @@
 	import AppHeader from '#lib/components/layout/AppHeader.svelte';
 	import SearchOverlay from '#lib/components/search/SearchOverlay.svelte';
 	import { SearchOverlayState, setSearchOverlay } from '#lib/search/overlay.svelte.ts';
+	import { setupMediaExpandTransition } from '#lib/transitions/media-expand.ts';
 	import type { LayoutProps } from './$types';
 
 	let { children, data }: LayoutProps = $props();
 
 	const overlay = setSearchOverlay(new SearchOverlayState());
+	setupMediaExpandTransition();
 </script>
 
 <svelte:head>

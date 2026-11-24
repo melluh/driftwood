@@ -70,4 +70,7 @@
 	--duration-fast: 120ms;
 	--duration-slow: 400ms;
 	--ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+	/* Page-level transitions: quick start, long gentle settle */
+	--duration-expand: 420ms;
+	--ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
 }

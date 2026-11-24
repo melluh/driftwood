@@ -25,6 +25,7 @@
 		position: fixed;
 		inset: 0 0 auto;
 		z-index: 10;
+		view-transition-name: app-header;
 		height: var(--header-height);
 		display: flex;
 		align-items: center;
@@ -34,6 +35,12 @@
 		transition:
 			background var(--duration-slow),
 			backdrop-filter var(--duration-slow);
+	}
+
+	/* Under the search overlay: stay part of the page so the overlay's screen
+	   isn't captured with the header floating over it */
+	:global(html:has(dialog[open])) header {
+		view-transition-name: none;
 	}
 
 	/* Solid once content scrolls underneath */

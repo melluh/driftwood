@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { MediaSummary } from '#lib/api/client.ts';
 	import { alternateTitle, mediaHref } from '#lib/media/format.ts';
+	import { isPlainClick } from '#lib/transitions/media-expand.ts';
 	import MediaMeta from '../media/MediaMeta.svelte';
 	import TmdbImage from '../media/TmdbImage.svelte';
 
@@ -15,7 +16,8 @@
 		/** DOM id, for the input's aria-activedescendant. */
 		id: string;
 		highlighted?: boolean;
-		onselect?: () => void;
+		/** A plain click on the result's link, which the router is about to follow. */
+		onselect?: (link: HTMLAnchorElement) => void;
 		onhover?: () => void;
 	} = $props();
 
@@ -23,8 +25,7 @@
 
 	/** Plain clicks navigate here and close search; modified clicks (new tab etc.) don't. */
 	function handleClick(event: MouseEvent) {
-		const modified = event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
-		if (!modified && event.button === 0) onselect?.();
+		if (isPlainClick(event)) onselect?.(event.currentTarget as HTMLAnchorElement);
 	}
 
 	function scrollIntoViewWhenHighlighted(node: HTMLElement) {

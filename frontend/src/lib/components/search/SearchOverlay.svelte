@@ -6,6 +6,7 @@
 	import { goto } from '$app/navigation';
 	import { MediaSearch, suggestionOptionId } from '#lib/search/media-search.svelte.ts';
 	import { mediaHref } from '#lib/media/format.ts';
+	import { expandFrom } from '#lib/transitions/media-expand.ts';
 	import FadedBackdrop from '../media/FadedBackdrop.svelte';
 	import IconButton from '../ui/IconButton.svelte';
 	import SearchInput from './SearchInput.svelte';
@@ -21,10 +22,21 @@
 		return () => dialog.close();
 	}
 
+	/**
+	 * Following a result keeps search open until the destination page is ready,
+	 * then grows that page out of the result while search closes.
+	 */
+	function leaveFrom(link: HTMLAnchorElement) {
+		expandFrom(link, { onleave: onclose });
+	}
+
 	function selectHighlighted() {
 		const item = search.highlighted;
 		if (!item) return;
-		onclose();
+		const option = document.getElementById(suggestionOptionId(listId, search.highlightedIndex));
+		const link = option?.querySelector('a');
+		if (link) leaveFrom(link);
+		else onclose();
 		// eslint-disable-next-line svelte/no-navigation-without-resolve -- mediaHref() resolves the route
 		void goto(mediaHref(item.media_type, item.id));
 	}
@@ -71,7 +83,7 @@
 		</div>
 
 		<div class="results">
-			<SuggestionList {search} id={listId} onselect={onclose} />
+			<SuggestionList {search} id={listId} onselect={leaveFrom} />
 		</div>
 	</div>
 </dialog>

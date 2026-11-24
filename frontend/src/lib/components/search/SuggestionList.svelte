@@ -10,7 +10,7 @@
 	}: {
 		search: MediaSearch;
 		id: string;
-		onselect: () => void;
+		onselect: (link: HTMLAnchorElement) => void;
 	} = $props();
 </script>
 

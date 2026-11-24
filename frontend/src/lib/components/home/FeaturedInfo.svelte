@@ -1,10 +1,22 @@
 <script lang="ts">
 	import type { MediaSummary } from '#lib/api/client.ts';
 	import { mediaHref } from '#lib/media/format.ts';
+	import { isPlainClick } from '#lib/transitions/media-expand.ts';
 	import MediaMeta from '../media/MediaMeta.svelte';
 	import LinkButton from '../ui/LinkButton.svelte';
 
-	let { media }: { media: MediaSummary } = $props();
+	let {
+		media,
+		onselect
+	}: {
+		media: MediaSummary;
+		/** A plain click on "More info", which the router is about to follow. */
+		onselect?: (link: HTMLAnchorElement) => void;
+	} = $props();
+
+	function handleClick(event: MouseEvent & { currentTarget: HTMLAnchorElement }) {
+		if (isPlainClick(event)) onselect?.(event.currentTarget);
+	}
 </script>
 
 <div class="info">
@@ -13,7 +25,9 @@
 	{#if media.overview}
 		<p class="overview">{media.overview}</p>
 	{/if}
-	<LinkButton href={mediaHref(media.media_type, media.id)} icon="info">More info</LinkButton>
+	<LinkButton href={mediaHref(media.media_type, media.id)} icon="info" onclick={handleClick}>
+		More info
+	</LinkButton>
 </div>
 
 <style>
