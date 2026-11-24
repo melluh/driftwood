@@ -243,6 +243,51 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/my-list': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * My List
+		 * @description The signed-in user's saved titles, most recently added first.
+		 */
+		get: operations['my_list_api_my_list_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/my-list/{media_type}/{media_id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** My List Status */
+		get: operations['my_list_status_api_my_list__media_type___media_id__get'];
+		/**
+		 * Add To My List
+		 * @description Saves a title to the list. Adding one that's already there is a no-op.
+		 */
+		put: operations['add_to_my_list_api_my_list__media_type___media_id__put'];
+		post?: never;
+		/**
+		 * Remove From My List
+		 * @description Removes a title from the list. Removing one that isn't there is a no-op.
+		 */
+		delete: operations['remove_from_my_list_api_my_list__media_type___media_id__delete'];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -392,6 +437,11 @@ export interface components {
 		 * @enum {string}
 		 */
 		MediaType: 'movie' | 'tv';
+		/** MyListStatus */
+		MyListStatus: {
+			/** In List */
+			in_list: boolean;
+		};
 		/** RankedRelease */
 		RankedRelease: {
 			release: components['schemas']['TorrentRelease'];
@@ -596,6 +646,7 @@ export type IndexerFailure = components['schemas']['IndexerFailure'];
 export type MediaDetails = components['schemas']['MediaDetails'];
 export type MediaSummary = components['schemas']['MediaSummary'];
 export type MediaType = components['schemas']['MediaType'];
+export type MyListStatus = components['schemas']['MyListStatus'];
 export type RankedRelease = components['schemas']['RankedRelease'];
 export type Rejected = components['schemas']['Rejected'];
 export type ReleaseAttributes = components['schemas']['ReleaseAttributes'];
@@ -907,6 +958,122 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['ReleaseNfo'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	my_list_api_my_list_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['MediaSummary'][];
+				};
+			};
+		};
+	};
+	my_list_status_api_my_list__media_type___media_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				media_type: components['schemas']['MediaType'];
+				media_id: number;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['MyListStatus'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	add_to_my_list_api_my_list__media_type___media_id__put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				media_type: components['schemas']['MediaType'];
+				media_id: number;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['MyListStatus'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	remove_from_my_list_api_my_list__media_type___media_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				media_type: components['schemas']['MediaType'];
+				media_id: number;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['MyListStatus'];
 				};
 			};
 			/** @description Validation Error */

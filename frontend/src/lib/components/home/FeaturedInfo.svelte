@@ -3,13 +3,18 @@
 	import { mediaHref } from '#lib/media/format.ts';
 	import { isPlainClick } from '#lib/transitions/media-expand.ts';
 	import MediaMeta from '../media/MediaMeta.svelte';
+	import MyListButton from '../media/MyListButton.svelte';
 	import LinkButton from '../ui/LinkButton.svelte';
 
 	let {
 		media,
+		inMyList,
+		onmylistchange,
 		onselect
 	}: {
 		media: MediaSummary;
+		inMyList: boolean;
+		onmylistchange: (media: MediaSummary, inList: boolean) => void;
 		/** A plain click on "More info", which the router is about to follow. */
 		onselect?: (link: HTMLAnchorElement) => void;
 	} = $props();
@@ -25,9 +30,12 @@
 	{#if media.overview}
 		<p class="overview">{media.overview}</p>
 	{/if}
-	<LinkButton href={mediaHref(media.media_type, media.id)} icon="info" onclick={handleClick}>
-		More info
-	</LinkButton>
+	<div class="actions">
+		<LinkButton href={mediaHref(media.media_type, media.id)} icon="info" onclick={handleClick}>
+			More info
+		</LinkButton>
+		<MyListButton {media} inList={inMyList} onchange={onmylistchange} />
+	</div>
 </div>
 
 <style>
@@ -37,6 +45,12 @@
 		align-items: flex-start;
 		gap: var(--space-4);
 		max-width: 40rem;
+	}
+
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-3);
 	}
 
 	h2 {

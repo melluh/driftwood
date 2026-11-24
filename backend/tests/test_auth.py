@@ -317,7 +317,14 @@ async def test_app_api_requires_sign_in(database: Database) -> None:
     app.state.auth = AuthState(AuthSettings(public_url=PUBLIC_URL), None)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url=PUBLIC_URL) as client:
-        for path in ["/api/home", "/api/search?q=x", "/api/search/status", "/api/media/movie/1"]:
+        for path in [
+            "/api/home",
+            "/api/search?q=x",
+            "/api/search/status",
+            "/api/media/movie/1",
+            "/api/my-list",
+            "/api/my-list/movie/1",
+        ]:
             assert (await client.get(path)).status_code == 401, path
 
 

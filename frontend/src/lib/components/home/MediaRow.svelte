@@ -1,9 +1,21 @@
 <script lang="ts">
 	import type { MediaSummary } from '#lib/api/client.ts';
 	import MediaCard from '../media/MediaCard.svelte';
+	import { isSameMedia } from '#lib/my-list/my-list.ts';
 	import HorizontalScroller from '../ui/HorizontalScroller.svelte';
 
-	let { title, items }: { title: string; items: MediaSummary[] } = $props();
+	let {
+		title,
+		items,
+		myList,
+		onmylistchange
+	}: {
+		title: string;
+		items: MediaSummary[];
+		/** Saved titles, to mark the cards that are on the list. */
+		myList: MediaSummary[];
+		onmylistchange: (media: MediaSummary, inList: boolean) => void;
+	} = $props();
 </script>
 
 <section class="row">
@@ -15,8 +27,13 @@
 		itemWidth="var(--row-card-width)"
 		gutter="var(--content-inset)"
 	>
-		{#snippet item(media)}
-			<MediaCard {media} sizes="(min-width: 48rem) 11rem, 8rem" />
+		{#snippet item(media: MediaSummary)}
+			<MediaCard
+				{media}
+				sizes="(min-width: 48rem) 11rem, 8rem"
+				inMyList={myList.some((saved) => isSameMedia(saved, media))}
+				{onmylistchange}
+			/>
 		{/snippet}
 	</HorizontalScroller>
 </section>

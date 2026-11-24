@@ -22,6 +22,7 @@ export type {
 	MediaDetails,
 	MediaSummary,
 	MediaType,
+	MyListStatus,
 	RankedRelease,
 	Rejected,
 	ReleaseNfo,

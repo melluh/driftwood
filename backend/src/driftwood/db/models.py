@@ -1,6 +1,14 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, MetaData, String, TypeDecorator, UniqueConstraint
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    MetaData,
+    String,
+    TypeDecorator,
+    UniqueConstraint,
+)
 from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -66,3 +74,26 @@ class UserSession(Base):
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
 
     user: Mapped[User] = relationship(lazy="joined")
+
+
+class MyListItem(Base):
+    """A title a user saved to "My list".
+
+    TMDB stays the source of truth for display data; the title, year and poster
+    are a snapshot so the list still renders when TMDB can't be reached.
+    """
+
+    __tablename__ = "my_list_items"
+    __table_args__ = (
+        UniqueConstraint("user_id", "media_type", "media_id"),
+        Index("ix_my_list_items_user_id_added_at", "user_id", "added_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    media_type: Mapped[str] = mapped_column(String(8))
+    media_id: Mapped[int]
+    title: Mapped[str] = mapped_column(String(512))
+    year: Mapped[int | None]
+    poster_path: Mapped[str | None] = mapped_column(String(255))
+    added_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

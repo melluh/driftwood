@@ -6,13 +6,23 @@
 	import { fade } from 'svelte/transition';
 	import type { MediaSummary } from '#lib/api/client.ts';
 	import { Rotation } from '#lib/home/rotation.svelte.ts';
+	import { isSameMedia } from '#lib/my-list/my-list.ts';
 	import { tmdbSrcset } from '#lib/tmdb/images.ts';
 	import { expandFrom } from '#lib/transitions/media-expand.ts';
 	import HeroFrame from '../media/HeroFrame.svelte';
 	import CarouselIndicators from './CarouselIndicators.svelte';
 	import FeaturedInfo from './FeaturedInfo.svelte';
 
-	let { items }: { items: MediaSummary[] } = $props();
+	let {
+		items,
+		myList,
+		onmylistchange
+	}: {
+		items: MediaSummary[];
+		/** The user's saved titles, to show whether each slide is on the list. */
+		myList: MediaSummary[];
+		onmylistchange: (media: MediaSummary, inList: boolean) => void;
+	} = $props();
 
 	const rotation = new Rotation(() => items.length);
 	const current = $derived(items[rotation.index] ?? items[0]);
@@ -56,7 +66,12 @@
 			<div class="slide">
 				{#key current}
 					<div class="info" in:fade={{ duration: 500 }}>
-						<FeaturedInfo media={current} onselect={expandFromHero} />
+						<FeaturedInfo
+							media={current}
+							inMyList={myList.some((item) => isSameMedia(item, current))}
+							{onmylistchange}
+							onselect={expandFromHero}
+						/>
 					</div>
 				{/key}
 			</div>

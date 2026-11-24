@@ -1,16 +1,28 @@
 <script lang="ts">
 	import FeaturedCarousel from '#lib/components/home/FeaturedCarousel.svelte';
 	import MediaRow from '#lib/components/home/MediaRow.svelte';
+	import type { MediaSummary } from '#lib/api/client.ts';
+	import { withMedia } from '#lib/my-list/my-list.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
+
+	// Toggling from the hero or a card updates the shelf and every card right away.
+	let myList = $derived(data.myList);
+
+	function setInMyList(media: MediaSummary, inList: boolean) {
+		myList = withMedia(myList, media, inList);
+	}
 </script>
 
-<FeaturedCarousel items={data.home.featured} />
+<FeaturedCarousel items={data.home.featured} {myList} onmylistchange={setInMyList} />
 
 <div class="rows">
+	{#if myList.length}
+		<MediaRow title="My list" items={myList} {myList} onmylistchange={setInMyList} />
+	{/if}
 	{#each data.home.rows as row (row.id)}
-		<MediaRow title={row.title} items={row.items} />
+		<MediaRow title={row.title} items={row.items} {myList} onmylistchange={setInMyList} />
 	{/each}
 </div>
 
