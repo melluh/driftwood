@@ -1,0 +1,72 @@
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	background: var(--color-bg);
+	color: var(--color-text);
+	font-family: var(--font-sans);
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Lock page scroll while a modal (e.g. the search overlay) is open */
+html:has(dialog[open]) {
+	overflow: hidden;
+}
+
+body {
+	margin: 0;
+	min-height: 100dvh;
+}
+
+h1,
+h2,
+h3,
+p {
+	margin: 0;
+}
+
+a {
+	color: inherit;
+	text-decoration: none;
+}
+
+button,
+input {
+	font: inherit;
+	color: inherit;
+}
+
+img {
+	display: block;
+	max-width: 100%;
+}
+
+:focus-visible {
+	outline: 2px solid var(--color-accent);
+	outline-offset: 2px;
+}
+
+::selection {
+	background: var(--color-accent-soft);
+}
+
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+.truncate {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}

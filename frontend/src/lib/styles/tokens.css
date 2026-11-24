@@ -1,0 +1,71 @@
+/*
+ * Driftwood design tokens. Every color in the app derives from these, so the
+ * whole scheme can be retuned here: shift --hue-base / --hue-accent to change
+ * the palette's temperature, or adjust individual lightness steps.
+ */
+:root {
+	color-scheme: dark;
+
+	--hue-base: 55;
+	--hue-accent: 65;
+	--chroma-base: 0.012;
+
+	/* Surfaces, darkest to lightest */
+	--color-bg: oklch(15% var(--chroma-base) var(--hue-base));
+	--color-surface: oklch(19% var(--chroma-base) var(--hue-base));
+	--color-surface-raised: oklch(23% var(--chroma-base) var(--hue-base));
+	--color-surface-hover: oklch(27% calc(var(--chroma-base) * 1.4) var(--hue-base));
+	--color-border: oklch(32% var(--chroma-base) var(--hue-base) / 0.7);
+
+	/* Text */
+	--color-text: oklch(93% 0.012 var(--hue-base));
+	--color-text-muted: oklch(72% 0.02 var(--hue-base));
+	--color-text-faint: oklch(55% 0.02 var(--hue-base));
+
+	/* Accent: weathered driftwood amber */
+	--color-accent: oklch(74% 0.11 var(--hue-accent));
+	--color-accent-strong: oklch(82% 0.12 var(--hue-accent));
+	--color-accent-soft: oklch(74% 0.11 var(--hue-accent) / 0.16);
+	--color-accent-contrast: oklch(18% 0.03 var(--hue-accent));
+	--color-danger: oklch(68% 0.15 30);
+
+	/* Logo wood tones */
+	--color-wood-light: oklch(76% 0.07 var(--hue-accent));
+	--color-wood: oklch(62% 0.075 var(--hue-accent));
+	--color-wood-dark: oklch(44% 0.06 var(--hue-accent));
+
+	/* Images fade into this color */
+	--fade-to: var(--color-bg);
+
+	/* Type */
+	--font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--font-display: ui-serif, 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+	--text-xs: 0.75rem;
+	--text-sm: 0.875rem;
+	--text-md: 1rem;
+	--text-lg: 1.25rem;
+	--text-xl: 1.75rem;
+	--text-2xl: clamp(2rem, 4vw + 1rem, 3.5rem);
+
+	/* Spacing, radii, motion */
+	--space-1: 0.25rem;
+	--space-2: 0.5rem;
+	--space-3: 0.75rem;
+	--space-4: 1rem;
+	--space-6: 1.5rem;
+	--space-8: 2rem;
+	--space-12: 3rem;
+	--page-gutter: clamp(1rem, 4vw, 3rem);
+	--page-max-width: 80rem;
+	--header-height: 4rem;
+
+	--radius-sm: 0.375rem;
+	--radius-md: 0.625rem;
+	--radius-lg: 1rem;
+	--radius-full: 999px;
+
+	--shadow-lg: 0 1.5rem 3rem -1rem oklch(0% 0 0 / 0.6);
+	--duration-fast: 120ms;
+	--duration-slow: 400ms;
+	--ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
