@@ -8,7 +8,6 @@
 	import { api, type PlaybackSession, type PlaybackVersion } from '#lib/api/client.ts';
 	import Button from '#lib/components/ui/Button.svelte';
 	import Icon from '#lib/components/ui/Icon.svelte';
-	import IconButton from '#lib/components/ui/IconButton.svelte';
 	import type { IconName } from '#lib/components/ui/icons.ts';
 	import Spinner from '#lib/components/ui/Spinner.svelte';
 	import StatusMessage from '#lib/components/ui/StatusMessage.svelte';
@@ -31,6 +30,7 @@
 	import { SubtitleRenderer } from '#lib/playback/subtitles.ts';
 	import PlayerMenu, { type MenuOption } from './PlayerMenu.svelte';
 	import SeekBar from './SeekBar.svelte';
+	import WatchTitleBar from '../WatchTitleBar.svelte';
 
 	let {
 		session,
@@ -563,13 +563,9 @@
 		{/if}
 	</div>
 
-	<header class="chrome top" class:shown={showControls}>
-		<IconButton icon="arrow-left" label="Back (Esc)" size="lg" onclick={onclose} />
-		<div class="title">
-			<h2>{title}</h2>
-			{#if detail}<span>{detail}</span>{/if}
-		</div>
-	</header>
+	<div class="chrome top" class:shown={showControls}>
+		<WatchTitleBar {title} {detail} {onclose} />
+	</div>
 
 	<div class="chrome bottom" class:shown={showControls}>
 		{#if menu}
@@ -843,40 +839,11 @@
 		pointer-events: auto;
 	}
 
+	/* The bar brings its own padding */
 	.top {
 		top: 0;
-		display: flex;
-		align-items: center;
-		gap: var(--space-3);
-		padding-block: var(--space-4) var(--space-12);
+		padding-inline: 0;
 		background: linear-gradient(to bottom, oklch(0% 0 0 / 0.7), transparent);
-	}
-
-	.title {
-		display: flex;
-		align-items: baseline;
-		gap: var(--space-2);
-		min-width: 0;
-		white-space: nowrap;
-	}
-
-	.title h2 {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		font-family: var(--font-display);
-		font-size: var(--text-lg);
-		font-weight: 600;
-	}
-
-	.title span {
-		color: oklch(100% 0 0 / 0.7);
-	}
-
-	.top :global(.icon-button) {
-		flex-shrink: 0;
-		border-color: oklch(100% 0 0 / 0.15);
-		background: oklch(0% 0 0 / 0.35);
-		color: #fff;
 	}
 
 	.bottom {

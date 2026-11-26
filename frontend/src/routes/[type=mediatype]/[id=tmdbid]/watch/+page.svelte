@@ -351,7 +351,6 @@
 
 <WatchStage
 	title={media.title}
-	year={media.year}
 	detail={episodeLabel}
 	backdropPath={media.backdrop_path}
 	immersive={phase === 'starting' || phase === 'playing'}

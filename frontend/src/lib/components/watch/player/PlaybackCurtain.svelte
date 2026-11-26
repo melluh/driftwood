@@ -8,8 +8,8 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import FadedBackdrop from '#lib/components/media/FadedBackdrop.svelte';
-	import IconButton from '#lib/components/ui/IconButton.svelte';
 	import Spinner from '#lib/components/ui/Spinner.svelte';
+	import WatchTitleBar from '../WatchTitleBar.svelte';
 
 	let {
 		title,
@@ -39,13 +39,9 @@
 
 <div class="curtain" class:lifted aria-hidden={lifted}>
 	<FadedBackdrop path={backdropPath} opacity={0.28} eager />
-	<header>
-		<IconButton icon="arrow-left" label="Back (Esc)" size="lg" onclick={onclose} />
-		<div class="title">
-			<h2>{title}</h2>
-			{#if detail}<span>{detail}</span>{/if}
-		</div>
-	</header>
+	<div class="bar">
+		<WatchTitleBar {title} {detail} {onclose} />
+	</div>
 	{#key shown}
 		<!-- Stays while the curtain fades, rather than popping off ahead of it. -->
 		<div class="status" role={lifted ? undefined : 'status'} aria-live="polite">
@@ -84,41 +80,10 @@
 		z-index: -1;
 	}
 
-	/* Matches the player's top bar, which takes its place as the curtain lifts. */
-	header {
+	/* Where the player's top bar will be, which takes its place as the curtain lifts. */
+	.bar {
 		position: absolute;
 		inset: 0 0 auto;
-		display: flex;
-		align-items: center;
-		gap: var(--space-3);
-		padding: var(--space-4) var(--page-gutter) var(--space-12);
-	}
-
-	.title {
-		display: flex;
-		align-items: baseline;
-		gap: var(--space-2);
-		min-width: 0;
-		white-space: nowrap;
-	}
-
-	.title h2 {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		font-family: var(--font-display);
-		font-size: var(--text-lg);
-		font-weight: 600;
-	}
-
-	.title span {
-		color: oklch(100% 0 0 / 0.7);
-	}
-
-	header :global(.icon-button) {
-		flex-shrink: 0;
-		border-color: oklch(100% 0 0 / 0.15);
-		background: oklch(0% 0 0 / 0.35);
-		color: #fff;
 	}
 
 	.status {
