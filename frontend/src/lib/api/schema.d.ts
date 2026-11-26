@@ -288,6 +288,50 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/progress/continue': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Continue Watching
+		 * @description Movies and episodes left part-way, and series' next episodes; most recent first.
+		 */
+		get: operations['continue_watching_api_progress_continue_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/progress/{media_type}/{media_id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Title Progress
+		 * @description The movie's progress (zero or one entry), or that of every episode played.
+		 */
+		get: operations['title_progress_api_progress__media_type___media_id__get'];
+		/**
+		 * Save Progress
+		 * @description Records where playback is. Past 90% the movie / episode counts as completed.
+		 */
+		put: operations['save_progress_api_progress__media_type___media_id__put'];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/library/status': {
 		parameters: {
 			query?: never;
@@ -551,6 +595,33 @@ export interface components {
 			character: string | null;
 			/** Profile Path */
 			profile_path: string | null;
+		};
+		/**
+		 * ContinueWatching
+		 * @description A title to pick up again: a movie or episode part-way through, or a series' next episode.
+		 */
+		ContinueWatching: {
+			media: components['schemas']['MediaSummary'];
+			/** Season */
+			season: number | null;
+			/** Episode */
+			episode: number | null;
+			/** Episode Title */
+			episode_title: string | null;
+			/** Position */
+			position: number;
+			/** Duration */
+			duration: number | null;
+			/**
+			 * Up Next
+			 * @default false
+			 */
+			up_next: boolean;
+			/**
+			 * Updated At
+			 * Format: date-time
+			 */
+			updated_at: string;
 		};
 		/** CurrentUser */
 		CurrentUser: {
@@ -1172,6 +1243,40 @@ export interface components {
 			 */
 			can_download: boolean;
 		};
+		/** WatchProgress */
+		WatchProgress: {
+			/** Season */
+			season: number | null;
+			/** Episode */
+			episode: number | null;
+			/** Position */
+			position: number;
+			/** Duration */
+			duration: number;
+			/** Completed */
+			completed: boolean;
+			/** Resume At */
+			resume_at: number;
+			/**
+			 * Updated At
+			 * Format: date-time
+			 */
+			updated_at: string;
+		};
+		/**
+		 * WatchProgressUpdate
+		 * @description Where the player is now. Series send the episode; movies leave it out.
+		 */
+		WatchProgressUpdate: {
+			/** Season */
+			season?: number | null;
+			/** Episode */
+			episode?: number | null;
+			/** Position */
+			position: number;
+			/** Duration */
+			duration: number;
+		};
 	};
 	responses: never;
 	parameters: never;
@@ -1181,6 +1286,7 @@ export interface components {
 }
 export type AuthConfig = components['schemas']['AuthConfig'];
 export type CastMember = components['schemas']['CastMember'];
+export type ContinueWatching = components['schemas']['ContinueWatching'];
 export type CurrentUser = components['schemas']['CurrentUser'];
 export type DownloadStatus = components['schemas']['DownloadStatus'];
 export type Genre = components['schemas']['Genre'];
@@ -1219,6 +1325,8 @@ export type TorrentRelease = components['schemas']['TorrentRelease'];
 export type ValidationError = components['schemas']['ValidationError'];
 export type WatchEpisode = components['schemas']['WatchEpisode'];
 export type WatchPlan = components['schemas']['WatchPlan'];
+export type WatchProgress = components['schemas']['WatchProgress'];
+export type WatchProgressUpdate = components['schemas']['WatchProgressUpdate'];
 export type $defs = Record<string, never>;
 export interface operations {
 	auth_config_api_auth_config_get: {
@@ -1633,6 +1741,94 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['MyListStatus'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	continue_watching_api_progress_continue_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ContinueWatching'][];
+				};
+			};
+		};
+	};
+	title_progress_api_progress__media_type___media_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				media_type: components['schemas']['MediaType'];
+				media_id: number;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['WatchProgress'][];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	save_progress_api_progress__media_type___media_id__put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				media_type: components['schemas']['MediaType'];
+				media_id: number;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['WatchProgressUpdate'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['WatchProgress'];
 				};
 			};
 			/** @description Validation Error */

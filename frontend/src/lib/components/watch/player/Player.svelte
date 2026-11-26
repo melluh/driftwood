@@ -40,7 +40,8 @@
 		onversion,
 		onretry,
 		onfallback,
-		onready
+		onready,
+		onprogress
 	}: {
 		session: PlaybackSession;
 		versions: PlaybackVersion[];
@@ -60,10 +61,13 @@
 		 * stays blank, for a curtain to cover.
 		 */
 		onready?: () => void;
+		/** Where playback is, every few seconds while playing and whenever it stops. */
+		onprogress?: (position: number, duration: number) => Promise<void> | void;
 	} = $props();
 
 	const SKIP_SECONDS = 10;
 	const IDLE_MS = 3000;
+	const PROGRESS_INTERVAL_MS = 10_000;
 
 	// Read once: a new session remounts the player.
 	const initial = (() => {
@@ -360,6 +364,22 @@
 		wake();
 	}
 
+	function reportProgress(element: HTMLVideoElement | null = video): Promise<void> | void {
+		// Before the first frame the position is just where we asked to start.
+		if (!started || !onprogress || !element || !(duration > 0)) return;
+		return onprogress(element.ended ? duration : element.currentTime, duration);
+	}
+
+	/** For events: report without waiting for it to be recorded. */
+	function report() {
+		void reportProgress();
+	}
+
+	/** Reports where playback is now; resolves once that's been recorded. */
+	export async function flushProgress(): Promise<void> {
+		await reportProgress();
+	}
+
 	function updateBuffered() {
 		const ranges = video.buffered;
 		buffered = Array.from({ length: ranges.length }, (_, index) => ({
@@ -387,13 +407,22 @@
 
 		const onfullscreen = () => (fullscreen = document.fullscreenElement === root);
 		document.addEventListener('fullscreenchange', onfullscreen);
+		const progressTimer = setInterval(() => {
+			if (!video.paused) report();
+		}, PROGRESS_INTERVAL_MS);
+		window.addEventListener('pagehide', report);
 		if ('mediaSession' in navigator) {
 			navigator.mediaSession.metadata = new MediaMetadata({ title, artist: detail ?? '' });
 			navigator.mediaSession.setActionHandler('seekbackward', () => skip(-SKIP_SECONDS));
 			navigator.mediaSession.setActionHandler('seekforward', () => skip(SKIP_SECONDS));
 		}
 
+		// Teardown may unset `video` before this cleanup runs.
+		const element = video;
 		return () => {
+			void reportProgress(element);
+			clearInterval(progressTimer);
+			window.removeEventListener('pagehide', report);
 			loadToken++;
 			clearTimeout(hideTimer);
 			document.removeEventListener('fullscreenchange', onfullscreen);
@@ -444,7 +473,11 @@
 		onprogress={updateBuffered}
 		ontimeupdate={updateBuffered}
 		onvolumechange={() => savePreferences({ volume: video.volume, muted: video.muted })}
-		onpause={wake}
+		onpause={() => {
+			wake();
+			report();
+		}}
+		onended={report}
 	></video>
 
 	<div class="cues" class:raised={showControls} bind:this={cues} aria-hidden="true"></div>

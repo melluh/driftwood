@@ -17,6 +17,7 @@ api.use({
 export type {
 	AuthConfig,
 	CastMember,
+	ContinueWatching,
 	CurrentUser,
 	DownloadStatus,
 	Genre,
@@ -43,5 +44,6 @@ export type {
 	SubtitleStatus,
 	SubtitleTrack,
 	TorrentRelease,
-	WatchPlan
+	WatchPlan,
+	WatchProgress
 } from './schema';

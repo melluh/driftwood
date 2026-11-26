@@ -11,6 +11,7 @@ from sqlalchemy import (
     String,
     TypeDecorator,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -191,3 +192,50 @@ class MyListItem(Base):
     year: Mapped[int | None]
     poster_path: Mapped[str | None] = mapped_column(String(255))
     added_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class WatchProgress(Base):
+    """How far a user got into a movie, or into one episode of a series.
+
+    Movies have no season / episode; each series episode gets its own row.
+    `completed` is sticky: it stays set when the user goes back to rewatch.
+    """
+
+    __tablename__ = "watch_progress"
+    __table_args__ = (
+        # NULLs never collide in a unique constraint, so movies get their own (partial) index.
+        Index(
+            "uq_watch_progress_episode",
+            "user_id",
+            "media_type",
+            "media_id",
+            "season",
+            "episode",
+            unique=True,
+            sqlite_where=text("season IS NOT NULL"),
+            postgresql_where=text("season IS NOT NULL"),
+        ),
+        Index(
+            "uq_watch_progress_title",
+            "user_id",
+            "media_type",
+            "media_id",
+            unique=True,
+            sqlite_where=text("season IS NULL"),
+            postgresql_where=text("season IS NULL"),
+        ),
+        Index("ix_watch_progress_user_id_updated_at", "user_id", "updated_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    media_type: Mapped[str] = mapped_column(String(8))
+    media_id: Mapped[int]
+    season: Mapped[int | None]
+    episode: Mapped[int | None]
+    position: Mapped[float]
+    """Seconds."""
+    duration: Mapped[float]
+    """Seconds."""
+    completed: Mapped[bool] = mapped_column(default=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

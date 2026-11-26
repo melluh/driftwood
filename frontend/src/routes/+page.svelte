@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ContinueWatchingRow from '#lib/components/home/ContinueWatchingRow.svelte';
 	import FeaturedCarousel from '#lib/components/home/FeaturedCarousel.svelte';
 	import MediaRow from '#lib/components/home/MediaRow.svelte';
 	import type { MediaSummary } from '#lib/api/client.ts';
@@ -18,6 +19,9 @@
 <FeaturedCarousel items={data.home.featured} {myList} onmylistchange={setInMyList} />
 
 <div class="rows">
+	{#if data.continueWatching.length}
+		<ContinueWatchingRow items={data.continueWatching} />
+	{/if}
 	{#if myList.length}
 		<MediaRow title="My list" items={myList} {myList} onmylistchange={setInMyList} />
 	{/if}

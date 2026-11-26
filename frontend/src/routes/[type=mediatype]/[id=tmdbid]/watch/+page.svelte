@@ -20,6 +20,7 @@
 	import Icon from '#lib/components/ui/Icon.svelte';
 	import { mediaHref } from '#lib/media/format.ts';
 	import { detectCapabilities } from '#lib/playback/capabilities.ts';
+	import { saveProgress } from '#lib/progress/progress.ts';
 	import { episodeCode, languageName } from '#lib/watch/labels.ts';
 	import type { PageProps } from './$types';
 
@@ -55,6 +56,7 @@
 	/** Why the library copy isn't playing, shown above the release search. */
 	let notice = $state<{ message: string; retry: boolean } | null>(null);
 	let startToken = 0;
+	let player = $state<{ flushProgress: () => Promise<void> } | null>(null);
 
 	let status = $state<'loading' | 'ready' | 'error'>('loading');
 	let plan = $state<WatchPlan | null>(null);
@@ -161,13 +163,13 @@
 		phase = 'search';
 	}
 
-	// A new title or episode: play it from the library if it's there.
+	// A new title or episode: play it from the library if it's there, where the user left off.
 	$effect(() => {
 		void [media.media_type, media.id, data.episode?.season, data.episode?.episode];
 		const local = inLibrary;
 		untrack(() => {
 			if (local) {
-				void startLocal();
+				void startLocal(null, data.resumeAt, data.resumeAt ? 'Resuming' : 'Starting playback');
 			} else {
 				void resumeOrSearch();
 			}
@@ -221,7 +223,7 @@
 				params: { path: { download_id: download.id } }
 			});
 			if (result) {
-				close();
+				void close();
 			} else {
 				downloadError = `Couldn't cancel: ${errorDetail(error) ?? `HTTP ${response.status}`}`;
 			}
@@ -322,7 +324,14 @@
 		chosen = option;
 	}
 
-	function close() {
+	function recordProgress(position: number, duration: number): Promise<void> {
+		return saveProgress(media, data.episode, position, duration);
+	}
+
+	async function close() {
+		// Record where playback stopped before leaving, so the next page sees it.
+		const flushed = player?.flushProgress();
+		if (flushed) await Promise.race([flushed, new Promise((done) => setTimeout(done, 1500))]);
 		// eslint-disable-next-line svelte/no-navigation-without-resolve -- mediaHref resolves
 		void goto(mediaHref(media.media_type, media.id));
 	}
@@ -338,7 +347,7 @@
 	detail={episodeLabel}
 	backdropPath={media.backdrop_path}
 	immersive={phase === 'starting' || phase === 'playing'}
-	onclose={close}
+	onclose={() => void close()}
 >
 	{#if phase === 'checking'}
 		<!-- Looking for a download in progress: a moment, so nothing to show. -->
@@ -364,18 +373,20 @@
 		{#if phase === 'playing' && offer?.session}
 			{#key offer.session.id}
 				<Player
+					bind:this={player}
 					session={offer.session}
 					versions={offer.versions}
 					title={media.title}
 					detail={episodeLabel}
 					{startAt}
-					onclose={close}
+					onclose={() => void close()}
 					onversion={(fileId: number, at: number) =>
 						void startLocal(fileId, at, 'Switching version')}
 					onretry={(at: number) => void startLocal(selectedFile ?? null, at)}
 					onfallback={(reason: string) =>
 						search(`Playback of your library copy stopped. ${reason}`, true)}
 					onready={() => (playerReady = true)}
+					onprogress={recordProgress}
 				/>
 			{/key}
 		{/if}
@@ -385,7 +396,7 @@
 			backdropPath={media.backdrop_path}
 			message={curtainMessage}
 			lifted={playerReady}
-			onclose={close}
+			onclose={() => void close()}
 		/>
 	{:else}
 		{#if notice}

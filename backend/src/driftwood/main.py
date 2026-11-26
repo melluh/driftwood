@@ -36,6 +36,8 @@ from driftwood.my_list.router import router as my_list_router
 from driftwood.my_list.service import MyListService
 from driftwood.playback.router import router as playback_router
 from driftwood.playback.service import PlaybackService
+from driftwood.progress.router import router as progress_router
+from driftwood.progress.service import WatchProgressService
 from driftwood.titles.store import TitleIndexStore
 from driftwood.tmdb.client import TmdbClient
 
@@ -91,6 +93,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.media_service = MediaService(titles, tmdb)
         app.state.home_service = HomeService(tmdb)
         app.state.my_list_service = MyListService(tmdb)
+        app.state.progress_service = WatchProgressService(tmdb)
         release_service = ReleaseService(
             tmdb, indexers, cache_ttl_seconds=settings.indexers.results_cache_ttl_seconds
         )
@@ -151,6 +154,7 @@ app.include_router(auth_router, prefix="/api")
 # Everything else requires a signed-in user.
 app.include_router(media_router, prefix="/api", dependencies=[Depends(require_user)])
 app.include_router(my_list_router, prefix="/api", dependencies=[Depends(require_user)])
+app.include_router(progress_router, prefix="/api", dependencies=[Depends(require_user)])
 app.include_router(library_router, prefix="/api", dependencies=[Depends(require_user)])
 app.include_router(playback_router, prefix="/api", dependencies=[Depends(require_user)])
 app.include_router(downloads_router, prefix="/api", dependencies=[Depends(require_user)])
