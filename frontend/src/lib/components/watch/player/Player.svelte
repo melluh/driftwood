@@ -11,6 +11,8 @@
 	import IconButton from '#lib/components/ui/IconButton.svelte';
 	import type { IconName } from '#lib/components/ui/icons.ts';
 	import Spinner from '#lib/components/ui/Spinner.svelte';
+	import StatusMessage from '#lib/components/ui/StatusMessage.svelte';
+	import { isTypingTarget } from '#lib/keyboard.ts';
 	import { attach, type Engine } from '#lib/playback/engine.ts';
 	import {
 		audioDetail,
@@ -325,6 +327,8 @@
 
 	function onkeydown(event: KeyboardEvent) {
 		if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+		// E.g. the search overlay, opened over the player: its keys are text, not shortcuts.
+		if (isTypingTarget(event.target)) return;
 		const target = event.target as HTMLElement | null;
 		if (event.key === 'Escape' && menu) {
 			// Close the menu, not the player.
@@ -529,16 +533,16 @@
 
 	<div class="center">
 		{#if fatal}
-			<div class="problem" role="alert">
-				<Icon name="alert" size="2rem" />
-				<h1>Playback stopped</h1>
-				<p>{fatal}</p>
-				<div class="actions">
-					<Button icon="play" onclick={() => onretry(currentTime || startAt)}>Try again</Button>
-					<Button variant="secondary" icon="search" onclick={() => onfallback(fatal ?? '')}>
-						Find a release instead
-					</Button>
-				</div>
+			<div class="problem">
+				<StatusMessage icon="alert" tone="danger" title="Playback stopped" role="alert">
+					{fatal}
+					{#snippet actions()}
+						<Button icon="play" onclick={() => onretry(currentTime || startAt)}>Try again</Button>
+						<Button variant="secondary" icon="search" onclick={() => onfallback(fatal ?? '')}>
+							Find a release instead
+						</Button>
+					{/snippet}
+				</StatusMessage>
 			</div>
 		{:else if !ready}
 			<!-- Starting up: nothing to show yet. -->
@@ -817,35 +821,11 @@
 	}
 
 	.problem {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--space-3);
 		max-width: 32rem;
 		margin: var(--page-gutter);
 		padding: var(--space-8);
 		border-radius: var(--radius-lg);
 		background: oklch(from var(--color-surface) l c h / 0.92);
-		color: var(--color-text-muted);
-		text-align: center;
-	}
-
-	.problem :global(svg) {
-		color: var(--color-danger);
-	}
-
-	.problem h1 {
-		font-family: var(--font-display);
-		font-size: var(--text-xl);
-		color: var(--color-text);
-	}
-
-	.actions {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: var(--space-3);
-		margin-top: var(--space-2);
 	}
 
 	.chrome {

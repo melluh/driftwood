@@ -19,7 +19,7 @@
 </script>
 
 <section class="row">
-	<h2>{title}</h2>
+	<h2 class="section-title">{title}</h2>
 	<HorizontalScroller
 		{items}
 		key={(media: MediaSummary) => `${media.media_type}-${media.id}`}
@@ -48,8 +48,6 @@
 
 	h2 {
 		padding: 0 var(--content-inset);
-		font-family: var(--font-display);
-		font-size: var(--text-xl);
 	}
 
 	@media (min-width: 48rem) {

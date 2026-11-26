@@ -1,14 +1,8 @@
 <script lang="ts">
+	import { isTypingTarget } from '#lib/keyboard.ts';
 	import IconButton from '../ui/IconButton.svelte';
 
 	let { onclick }: { onclick: () => void } = $props();
-
-	function isTypingTarget(target: EventTarget | null): boolean {
-		return (
-			target instanceof HTMLElement &&
-			(target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
-		);
-	}
 
 	/** "/" or Ctrl/Cmd+K open search from anywhere. */
 	function handleKeydown(event: KeyboardEvent) {

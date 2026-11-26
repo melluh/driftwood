@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { untrack } from 'svelte';
+	import { fade } from 'svelte/transition';
 	import {
 		api,
 		type DownloadStatus,
@@ -18,6 +19,8 @@
 	import WatchStage from '#lib/components/watch/WatchStage.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import Icon from '#lib/components/ui/Icon.svelte';
+	import InlineAlert from '#lib/components/ui/InlineAlert.svelte';
+	import StatusMessage from '#lib/components/ui/StatusMessage.svelte';
 	import { mediaHref } from '#lib/media/format.ts';
 	import { detectCapabilities } from '#lib/playback/capabilities.ts';
 	import { saveProgress } from '#lib/progress/progress.ts';
@@ -320,6 +323,9 @@
 		return () => controller.abort();
 	});
 
+	/** Each step of finding something to watch fades in, rather than popping in. */
+	const VIEW_FADE = { duration: 250 };
+
 	function choose(option: RankedRelease) {
 		chosen = option;
 	}
@@ -341,6 +347,8 @@
 	<title>Watch {media.title}{episodeLabel ? ` ${episodeLabel}` : ''} · Driftwood</title>
 </svelte:head>
 
+{#snippet downloadErrorText()}{download?.error}{/snippet}
+
 <WatchStage
 	title={media.title}
 	year={media.year}
@@ -353,21 +361,27 @@
 		<!-- Looking for a download in progress: a moment, so nothing to show. -->
 	{:else if phase === 'downloading' && download}
 		{#if download.state === 'failed' || download.state === 'cancelled'}
-			<div class="message">
-				<Icon name="alert" size="2rem" />
-				<h1>
-					{download.state === 'failed' ? "The download didn't finish" : 'Download cancelled'}
-				</h1>
-				{#if download.error}<p>{download.error}</p>{/if}
-				<Button onclick={() => search(null)}>Try again</Button>
+			<div class="view" in:fade={VIEW_FADE}>
+				<StatusMessage
+					icon="alert"
+					tone={download.state === 'failed' ? 'danger' : 'neutral'}
+					title={download.state === 'failed' ? "The download didn't finish" : 'Download cancelled'}
+					children={download.error ? downloadErrorText : undefined}
+				>
+					{#snippet actions()}
+						<Button onclick={() => search(null)}>Try again</Button>
+					{/snippet}
+				</StatusMessage>
 			</div>
 		{:else}
-			{#key download.id}
-				<DownloadProgress {download} {cancelling} oncancel={() => void cancelDownload()} />
-			{/key}
-			{#if downloadError}
-				<p class="failure"><Icon name="alert" /> {downloadError}</p>
-			{/if}
+			<div class="view" in:fade={VIEW_FADE}>
+				{#key download.id}
+					<DownloadProgress {download} {cancelling} oncancel={() => void cancelDownload()} />
+				{/key}
+				{#if downloadError}
+					<InlineAlert>{downloadError}</InlineAlert>
+				{/if}
+			</div>
 		{/if}
 	{:else if phase !== 'search'}
 		{#if phase === 'playing' && offer?.session}
@@ -399,97 +413,111 @@
 			onclose={() => void close()}
 		/>
 	{:else}
-		{#if notice}
-			<div class="notice" role="status">
-				<Icon name="info" size="1.25rem" />
-				<p>{notice.message}</p>
-				{#if notice.retry}
-					<Button variant="secondary" icon="play" onclick={() => void startLocal()}>
-						Try the library copy
-					</Button>
-				{/if}
-			</div>
-		{/if}
-		{#if status === 'loading'}
-			<WatchLoading title={media.title} detail={episodeLabel} />
-		{:else if status === 'error'}
-			<div class="message">
-				<Icon name="alert" size="2rem" />
-				<h1>Couldn't check for torrents</h1>
-				<p>{errorMessage}</p>
-				<Button onclick={() => attempt++}>Try again</Button>
-			</div>
-		{:else if plan}
-			{#if shown}
-				<SelectedRelease
-					ranked={shown}
-					isRecommended={!chosen || chosen.release.guid === plan.pick?.release.guid}
-					wantedSubtitles={plan.subtitle_languages}
-					canDownload={plan.can_download}
-					starting={startingDownload}
-					ondownload={() => shown && void startDownload(shown)}
-					onreset={() => (chosen = null)}
-				/>
-				{#if downloadError}
-					<p class="failure"><Icon name="alert" /> {downloadError}</p>
-				{/if}
-			{:else}
-				<div class="message">
-					<Icon name="info" size="2rem" />
-					<h1>Nothing good to watch yet</h1>
-					<p>
-						{#if !plan.indexers.length}
-							No indexers are configured. Set <code>
-								DRIFTWOOD_INDEXERS__TORRENTLEECH__USERNAME
-							</code>
-							and <code>__PASSWORD</code> in the backend's <code>.env</code>.
-						{:else if plan.considered}
-							The indexers found {plan.considered} release{plan.considered === 1 ? '' : 's'}, but
-							none is good to watch{#if rejectedSummary}&nbsp;({rejectedSummary}){/if}.
-						{:else}
-							The indexers didn't find any releases for this title.
+		{#key status}
+			<div class="view" in:fade={VIEW_FADE}>
+				{#if notice}
+					<div class="notice" role="status">
+						<Icon name="info" size="1.25rem" />
+						<p>{notice.message}</p>
+						{#if notice.retry}
+							<Button variant="secondary" icon="play" onclick={() => void startLocal()}>
+								Try the library copy
+							</Button>
 						{/if}
-					</p>
-					<Button variant="secondary" onclick={() => attempt++}>Search again</Button>
-				</div>
-			{/if}
+					</div>
+				{/if}
+				{#if status === 'loading'}
+					<WatchLoading title={media.title} detail={episodeLabel} />
+				{:else if status === 'error'}
+					<StatusMessage
+						icon="alert"
+						tone="danger"
+						title="Couldn't check for torrents"
+						role="alert"
+					>
+						{errorMessage}
+						{#snippet actions()}
+							<Button onclick={() => attempt++}>Try again</Button>
+						{/snippet}
+					</StatusMessage>
+				{:else if plan}
+					{#if shown}
+						<SelectedRelease
+							ranked={shown}
+							isRecommended={!chosen || chosen.release.guid === plan.pick?.release.guid}
+							wantedSubtitles={plan.subtitle_languages}
+							canDownload={plan.can_download}
+							starting={startingDownload}
+							ondownload={() => shown && void startDownload(shown)}
+							onreset={() => (chosen = null)}
+						/>
+						{#if downloadError}
+							<InlineAlert>{downloadError}</InlineAlert>
+						{/if}
+					{:else}
+						<StatusMessage icon="info" title="Nothing good to watch yet">
+							{#if !plan.indexers.length}
+								No indexers are configured. Set <code>
+									DRIFTWOOD_INDEXERS__TORRENTLEECH__USERNAME
+								</code>
+								and <code>__PASSWORD</code> in the backend's <code>.env</code>.
+							{:else if plan.considered}
+								The indexers found {plan.considered} release{plan.considered === 1 ? '' : 's'}, but
+								none is good to watch{#if rejectedSummary}&nbsp;({rejectedSummary}){/if}.
+							{:else}
+								The indexers didn't find any releases for this title.
+							{/if}
+							{#snippet actions()}
+								<Button variant="secondary" onclick={() => attempt++}>Search again</Button>
+							{/snippet}
+						</StatusMessage>
+					{/if}
 
-			{#each plan.failures as failure (failure.indexer + failure.message)}
-				<p class="failure"><Icon name="alert" /> {failure.indexer}: {failure.message}</p>
-			{/each}
-
-			{#if others.length > 1 || (others.length === 1 && !plan.pick)}
-				<UpgradeOptions
-					options={others}
-					selectedGuid={shown?.release.guid ?? null}
-					onselect={choose}
-				/>
-			{/if}
-
-			<details class="search-details">
-				<summary>Search details</summary>
-				<dl>
-					<dt>Query</dt>
-					<dd><code>{plan.query}</code></dd>
-					<dt>Indexers</dt>
-					<dd>{plan.indexers.join(', ') || 'none'}</dd>
-					<dt>Releases found</dt>
-					<dd>{plan.considered}</dd>
-					<dt>Wanted subtitles</dt>
-					<dd>{plan.subtitle_languages.map(languageName).join(', ') || 'any (checks off)'}</dd>
-					<dt>NFOs checked</dt>
-					<dd>{plan.nfos_checked}</dd>
-					{#each plan.rejected as rejection (rejection.reason)}
-						<dt>Skipped: {rejection.reason}</dt>
-						<dd>{rejection.count}</dd>
+					{#each plan.failures as failure (failure.indexer + failure.message)}
+						<InlineAlert>{failure.indexer}: {failure.message}</InlineAlert>
 					{/each}
-				</dl>
-			</details>
-		{/if}
+
+					{#if others.length > 1 || (others.length === 1 && !plan.pick)}
+						<UpgradeOptions
+							options={others}
+							selectedGuid={shown?.release.guid ?? null}
+							onselect={choose}
+						/>
+					{/if}
+
+					<details class="search-details">
+						<summary>Search details</summary>
+						<dl>
+							<dt>Query</dt>
+							<dd><code>{plan.query}</code></dd>
+							<dt>Indexers</dt>
+							<dd>{plan.indexers.join(', ') || 'none'}</dd>
+							<dt>Releases found</dt>
+							<dd>{plan.considered}</dd>
+							<dt>Wanted subtitles</dt>
+							<dd>{plan.subtitle_languages.map(languageName).join(', ') || 'any (checks off)'}</dd>
+							<dt>NFOs checked</dt>
+							<dd>{plan.nfos_checked}</dd>
+							{#each plan.rejected as rejection (rejection.reason)}
+								<dt>Skipped: {rejection.reason}</dt>
+								<dd>{rejection.count}</dd>
+							{/each}
+						</dl>
+					</details>
+				{/if}
+			</div>
+		{/key}
 	{/if}
 </WatchStage>
 
 <style>
+	/* Lays its children out like the stage's content column it stands in for. */
+	.view {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-8);
+	}
+
 	.notice {
 		display: flex;
 		flex-wrap: wrap;
@@ -510,35 +538,6 @@
 	.notice :global(svg) {
 		flex-shrink: 0;
 		color: var(--color-accent);
-	}
-
-	.message {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--space-3);
-		text-align: center;
-		color: var(--color-text-muted);
-	}
-
-	.message h1 {
-		font-family: var(--font-display);
-		font-size: var(--text-xl);
-		color: var(--color-text);
-	}
-
-	.message p {
-		max-width: 32rem;
-		margin-bottom: var(--space-2);
-	}
-
-	.failure {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		font-size: var(--text-sm);
-		color: var(--color-danger);
-		overflow-wrap: anywhere;
 	}
 
 	code {

@@ -4,6 +4,9 @@
 -->
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { cubicOut } from 'svelte/easing';
+	import { prefersReducedMotion } from 'svelte/motion';
+	import type { TransitionConfig } from 'svelte/transition';
 	import { MediaSearch, suggestionOptionId } from '#lib/search/media-search.svelte.ts';
 	import { mediaHref } from '#lib/media/format.ts';
 	import { expandFrom } from '#lib/transitions/media-expand.ts';
@@ -17,6 +20,31 @@
 	const search = new MediaSearch();
 	const listId = 'search-suggestions';
 
+	/** Closing because a result is being followed, not dismissed. */
+	let leaving = false;
+
+	/**
+	 * Dismissing fades search out. Following a result closes it at once: the
+	 * page is about to grow over it, and a half-faded overlay would be captured
+	 * in that transition's new screen.
+	 */
+	const dismiss: (node: Element) => TransitionConfig = () => {
+		if (leaving) return { duration: 0 };
+		return {
+			duration: 200,
+			easing: cubicOut,
+			css: (t) =>
+				prefersReducedMotion.current
+					? `opacity: ${t}`
+					: `opacity: ${t}; transform: scale(${1 + (1 - t) * 0.01})`
+		};
+	};
+
+	function leave() {
+		leaving = true;
+		onclose();
+	}
+
 	function openAsModal(dialog: HTMLDialogElement) {
 		dialog.showModal();
 		return () => dialog.close();
@@ -27,7 +55,7 @@
 	 * then grows that page out of the result while search closes.
 	 */
 	function leaveFrom(link: HTMLAnchorElement) {
-		expandFrom(link, { onleave: onclose });
+		expandFrom(link, { onleave: leave });
 	}
 
 	function selectHighlighted() {
@@ -36,7 +64,7 @@
 		const option = document.getElementById(suggestionOptionId(listId, search.highlightedIndex));
 		const link = option?.querySelector('a');
 		if (link) leaveFrom(link);
-		else onclose();
+		else leave();
 		// eslint-disable-next-line svelte/no-navigation-without-resolve -- mediaHref() resolves the route
 		void goto(mediaHref(item.media_type, item.id));
 	}
@@ -63,7 +91,7 @@
 	}
 </script>
 
-<dialog {@attach openAsModal} oncancel={handleCancel} aria-label="Search">
+<dialog {@attach openAsModal} out:dismiss oncancel={handleCancel} aria-label="Search">
 	<FadedBackdrop path={search.highlighted?.backdrop_path} opacity={0.35} />
 
 	<div class="layout">
@@ -146,6 +174,18 @@
 		from {
 			opacity: 0;
 			transform: scale(1.01);
+		}
+	}
+
+	@keyframes appear-plain {
+		from {
+			opacity: 0;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		dialog {
+			animation-name: appear-plain;
 		}
 	}
 </style>

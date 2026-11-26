@@ -6,6 +6,8 @@
 	import { EtaEstimator } from '#lib/watch/eta.ts';
 	import Button from '../ui/Button.svelte';
 	import Icon from '../ui/Icon.svelte';
+	import InlineAlert from '../ui/InlineAlert.svelte';
+	import PulseRings from '../ui/PulseRings.svelte';
 
 	let {
 		download,
@@ -132,15 +134,14 @@
 <div class="progress" role="status" aria-live="polite">
 	<div
 		class="dial"
-		class:moving
 		role="progressbar"
 		aria-label={label}
 		aria-valuemin={0}
 		aria-valuemax={100}
 		aria-valuenow={indeterminate ? undefined : percent}
 	>
-		<span class="ring" aria-hidden="true"></span>
-		<span class="ring delayed" aria-hidden="true"></span>
+		<!-- The same ripple as "Checking for torrents", while data is (about to be) flowing. -->
+		<PulseRings from={0.8} to={1.25} peak={0.45} active={moving} />
 		<svg viewBox="0 0 120 120" aria-hidden="true">
 			<circle class="track" cx="60" cy="60" r="56" pathLength="100" />
 			<g class="spinner" bind:this={spinner}>
@@ -188,7 +189,7 @@
 	</div>
 
 	{#if download.error}
-		<p class="warning"><Icon name="alert" size="1em" /> {download.error}</p>
+		<div class="warning"><InlineAlert>{download.error}</InlineAlert></div>
 	{/if}
 </div>
 
@@ -302,39 +303,7 @@
 		color: var(--color-text-muted);
 	}
 
-	/* The same ripple as "Checking for torrents", while data is (about to be) flowing. */
-	.ring {
-		position: absolute;
-		inset: 0;
-		border: 2px solid var(--color-accent);
-		border-radius: var(--radius-full);
-		opacity: 0;
-	}
-
-	.moving .ring {
-		animation: ripple 2.4s var(--ease-out) infinite;
-	}
-
-	.delayed {
-		animation-delay: 1.2s !important;
-	}
-
-	@keyframes ripple {
-		from {
-			transform: scale(0.8);
-			opacity: 0.45;
-		}
-		to {
-			transform: scale(1.25);
-			opacity: 0;
-		}
-	}
-
 	@media (prefers-reduced-motion: reduce) {
-		.moving .ring {
-			animation: none;
-		}
-
 		.arc {
 			transition: none;
 		}
@@ -352,11 +321,6 @@
 	}
 
 	.warning {
-		display: flex;
-		align-items: center;
-		gap: var(--space-1);
 		max-width: 30rem;
-		font-size: var(--text-sm);
-		color: var(--color-danger);
 	}
 </style>

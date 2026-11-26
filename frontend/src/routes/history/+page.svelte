@@ -2,8 +2,9 @@
 	import type { WatchHistoryItem } from '#lib/api/client.ts';
 	import HistoryRow from '#lib/components/history/HistoryRow.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
-	import Icon from '#lib/components/ui/Icon.svelte';
+	import InlineAlert from '#lib/components/ui/InlineAlert.svelte';
 	import LinkButton from '#lib/components/ui/LinkButton.svelte';
+	import StatusMessage from '#lib/components/ui/StatusMessage.svelte';
 	import { resolve } from '$app/paths';
 	import { loadHistory } from '#lib/progress/progress.ts';
 	import type { PageProps } from './$types';
@@ -79,15 +80,26 @@
 	</header>
 
 	{#if !data.history}
-		<div class="empty" role="alert">
-			<Icon name="alert" size="2rem" />
-			<p>Couldn't load your watch history.</p>
+		<div class="empty">
+			<StatusMessage
+				icon="alert"
+				tone="danger"
+				title="Couldn't load your watch history"
+				role="alert"
+			>
+				{#snippet actions()}
+					<Button onclick={() => location.reload()}>Try again</Button>
+				{/snippet}
+			</StatusMessage>
 		</div>
 	{:else if !items.length}
 		<div class="empty">
-			<Icon name="history" size="2rem" />
-			<p>Nothing here yet. Movies and episodes you watch will show up here.</p>
-			<LinkButton href={resolve('/')} variant="secondary">Find something to watch</LinkButton>
+			<StatusMessage icon="history" title="Nothing here yet">
+				Movies and episodes you watch will show up here.
+				{#snippet actions()}
+					<LinkButton href={resolve('/')} variant="secondary">Find something to watch</LinkButton>
+				{/snippet}
+			</StatusMessage>
 		</div>
 	{:else}
 		{#each days as day (day.key)}
@@ -103,7 +115,7 @@
 
 		{#if hasMore || failed}
 			<div class="more">
-				{#if failed}<p class="failure">Couldn't load more.</p>{/if}
+				{#if failed}<InlineAlert>Couldn't load more.</InlineAlert>{/if}
 				<Button variant="secondary" onclick={() => void loadMore()} disabled={loading}>
 					{loading ? 'Loading…' : failed ? 'Try again' : 'Show more'}
 				</Button>
@@ -125,10 +137,6 @@
 	header h1 {
 		font-family: var(--font-display);
 		font-size: var(--text-2xl);
-	}
-
-	header p {
-		color: var(--color-text-muted);
 	}
 
 	.day {
@@ -160,13 +168,7 @@
 	}
 
 	.empty {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--space-3);
 		padding: var(--space-12) 0;
-		text-align: center;
-		color: var(--color-text-muted);
 	}
 
 	.more {
@@ -174,10 +176,5 @@
 		flex-direction: column;
 		align-items: center;
 		gap: var(--space-2);
-	}
-
-	.failure {
-		font-size: var(--text-sm);
-		color: var(--color-danger);
 	}
 </style>

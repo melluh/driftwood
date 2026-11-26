@@ -29,7 +29,10 @@
 	} = $props();
 
 	function onkeydown(event: KeyboardEvent) {
-		if (event.key === 'Escape') onclose();
+		if (event.key !== 'Escape' || event.defaultPrevented) return;
+		// The search overlay, opened over the stage, closes on its own Esc.
+		if (event.target instanceof Element && event.target.closest('dialog[open]')) return;
+		onclose();
 	}
 </script>
 

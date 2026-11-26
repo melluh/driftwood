@@ -3,7 +3,7 @@
 	import { formatBytes, formatTimestamp } from '#lib/media/format.ts';
 	import Button from '../ui/Button.svelte';
 	import FreeleechBadge from '../watch/FreeleechBadge.svelte';
-	import Icon from '../ui/Icon.svelte';
+	import InlineAlert from '../ui/InlineAlert.svelte';
 	import Spinner from '../ui/Spinner.svelte';
 
 	/**
@@ -42,7 +42,7 @@
 	</div>
 
 	{#if error}
-		<p class="message danger"><Icon name="alert" /> {error}</p>
+		<InlineAlert>{error}</InlineAlert>
 	{/if}
 
 	{#if result}
@@ -60,7 +60,7 @@
 		{/if}
 
 		{#each result.failures as failure (failure.indexer + failure.message)}
-			<p class="message danger"><Icon name="alert" /> {failure.indexer}: {failure.message}</p>
+			<InlineAlert>{failure.indexer}: {failure.message}</InlineAlert>
 		{/each}
 
 		{#if result.releases.length}
@@ -131,10 +131,6 @@
 		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--space-1);
-	}
-
-	.danger {
-		color: var(--color-danger);
 	}
 
 	code {

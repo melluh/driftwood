@@ -1,5 +1,6 @@
 @import './tokens.css';
 @import './transitions.css';
+@import './buttons.css';
 
 *,
 *::before,
@@ -64,6 +65,12 @@ img {
 	overflow: hidden;
 	clip-path: inset(50%);
 	white-space: nowrap;
+}
+
+/* A section's heading: home rows, page sections */
+.section-title {
+	font-family: var(--font-display);
+	font-size: var(--text-xl);
 }
 
 .truncate {

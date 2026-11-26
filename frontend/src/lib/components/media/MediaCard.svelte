@@ -119,6 +119,14 @@
 		pointer-events: auto;
 	}
 
+	/* Without hover there's nothing to reveal it: always there, to tap. */
+	@media (hover: none) {
+		.poster-overlay > :global(*) {
+			opacity: 1;
+			pointer-events: auto;
+		}
+	}
+
 	.title {
 		font-size: var(--text-sm);
 		font-weight: 600;
@@ -127,5 +135,11 @@
 	.year {
 		font-size: var(--text-xs);
 		color: var(--color-text-muted);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.lifts {
+			transition: none;
+		}
 	}
 </style>

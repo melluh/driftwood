@@ -221,7 +221,7 @@
 		}
 
 		h3 {
-			font-size: var(--text-base);
+			font-size: var(--text-md);
 		}
 
 		.meter {
