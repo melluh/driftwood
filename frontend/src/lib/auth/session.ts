@@ -11,12 +11,30 @@ export function oauthLoginHref(next: string): string {
 	return `/api/auth/login?next=${encodeURIComponent(next)}`;
 }
 
-/** Only same-origin paths are valid post-login destinations (mirrors the backend). */
+/** A stand-in origin to resolve `next` against; only "is it still this origin?" matters. */
+const SAME_ORIGIN = 'http://driftwood.invalid';
+
+/**
+ * Only same-origin paths are valid post-login destinations (no open redirect).
+ *
+ * Checked by resolving it the way navigation will, not by looking at the string:
+ * URL parsing drops tabs and newlines and reads `\` as `/`, so `/\t/evil.com`
+ * would otherwise slip past a `//` check and land on `//evil.com`. The normalized
+ * result is checked again, as dot segments can collapse into one (`/.//evil.com`).
+ */
 export function safeNext(value: string | null | undefined): string {
-	if (!value || !value.startsWith('/') || value.startsWith('//') || value.startsWith('/\\')) {
-		return '/';
+	if (!value?.startsWith('/')) return '/';
+	const path = sameOriginPath(value);
+	return path !== null && sameOriginPath(path) === path ? path : '/';
+}
+
+function sameOriginPath(value: string): string | null {
+	try {
+		const url = new URL(value, SAME_ORIGIN);
+		return url.origin === SAME_ORIGIN ? url.pathname + url.search + url.hash : null;
+	} catch {
+		return null;
 	}
-	return value;
 }
 
 let signedIn = false;
