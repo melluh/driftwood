@@ -19,7 +19,7 @@ from driftwood.config import (
 )
 from driftwood.db import Database
 from driftwood.downloads import importer
-from driftwood.downloads.bencode import encode, infohash
+from driftwood.downloads.bencode import BencodeError, encode, infohash
 from driftwood.downloads.importer import (
     Placement,
     Target,
@@ -58,6 +58,18 @@ def test_infohash_is_sha1_of_the_raw_info_dictionary() -> None:
     info = {"name": "x.mkv", "length": 1, "piece length": 16384, "pieces": b"\1" * 20}
     torrent = encode({"announce": "http://t.invalid", "info": info, "zcomment": "after"})
     assert infohash(torrent) == hashlib.sha1(encode(info)).hexdigest()
+
+
+def test_deeply_nested_torrents_are_invalid_not_a_crash() -> None:
+    nested = b"d4:info" + b"l" * 100_000 + b"e" * 100_000 + b"e"
+    with pytest.raises(BencodeError, match="nested"):
+        infohash(nested)
+    # Real nesting (a v2 file tree a folder per level) is fine.
+    tree: dict = {"length": 1}
+    for level in range(50):
+        tree = {f"dir{level}": tree}
+    info = {"name": "x", "file tree": tree, "piece length": 16384, "pieces": b"\0" * 20}
+    assert len(infohash(encode({"info": info}))) == 40
 
 
 def test_v2_only_torrents_use_the_truncated_sha256() -> None:

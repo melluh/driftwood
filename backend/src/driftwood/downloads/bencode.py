@@ -8,7 +8,14 @@ class BencodeError(ValueError):
     pass
 
 
-def _decode(data: bytes, index: int) -> tuple[Any, int]:
+_MAX_DEPTH = 256
+"""Lists and dictionaries nested deeper than this aren't a torrent (a v2 file tree nests
+one level per folder), and would exhaust Python's recursion limit."""
+
+
+def _decode(data: bytes, index: int, depth: int = 0) -> tuple[Any, int]:
+    if depth > _MAX_DEPTH:
+        raise BencodeError(f"nested more than {_MAX_DEPTH} levels deep at byte {index}")
     try:
         token = data[index : index + 1]
         if token == b"i":
@@ -18,17 +25,17 @@ def _decode(data: bytes, index: int) -> tuple[Any, int]:
             index += 1
             items = []
             while data[index : index + 1] != b"e":
-                item, index = _decode(data, index)
+                item, index = _decode(data, index, depth + 1)
                 items.append(item)
             return items, index + 1
         if token == b"d":
             index += 1
             result: dict[bytes, Any] = {}
             while data[index : index + 1] != b"e":
-                key, index = _decode(data, index)
+                key, index = _decode(data, index, depth + 1)
                 if not isinstance(key, bytes):
                     raise BencodeError("dictionary key is not a string")
-                result[key], index = _decode(data, index)
+                result[key], index = _decode(data, index, depth + 1)
             return result, index + 1
         if token.isdigit():
             colon = data.index(b":", index)
