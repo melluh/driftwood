@@ -13,7 +13,8 @@
 	const PLACEHOLDER_ICONS: Record<ImageKind, IconName> = {
 		poster: 'film',
 		backdrop: 'film',
-		profile: 'person'
+		profile: 'person',
+		still: 'tv'
 	};
 
 	let {

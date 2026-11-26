@@ -5,14 +5,19 @@ import logging
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from driftwood.db.models import User, WatchProgress, utcnow
 from driftwood.media.mapping import to_summary
 from driftwood.media.schemas import MediaType
-from driftwood.progress.schemas import ContinueWatching, WatchProgressUpdate
+from driftwood.progress.schemas import (
+    ContinueWatching,
+    WatchHistoryItem,
+    WatchHistoryPage,
+    WatchProgressUpdate,
+)
 from driftwood.progress.schemas import WatchProgress as WatchProgressOut
 from driftwood.tmdb.client import TmdbClient, TmdbNotFoundError
 
@@ -230,16 +235,72 @@ class WatchProgressService:
             updated_at=row.updated_at,
         )
 
+    async def _episode(self, series_id: int, season: int, episode: int) -> TmdbJson:
+        """The episode's TMDB data (name, runtime, still); empty when TMDB doesn't have it."""
+        try:
+            data = await self.tmdb.season(series_id, season)
+        except (TmdbNotFoundError, httpx.HTTPError):
+            return {}
+        for item in data.get("episodes") or []:
+            if item.get("episode_number") == episode:
+                return item
+        return {}
+
     async def _episode_info(
         self, series_id: int, season: int, episode: int
     ) -> tuple[str | None, float | None]:
         """The episode's name and runtime (seconds), when TMDB has them."""
+        item = await self._episode(series_id, season, episode)
+        runtime = item.get("runtime")
+        return item.get("name") or None, runtime * 60.0 if runtime else None
+
+    async def history(
+        self, db: AsyncSession, user: User, offset: int, limit: int
+    ) -> WatchHistoryPage:
+        """Every movie and episode the user got into (not just peeked at), latest first."""
+        rows = list(
+            await db.scalars(
+                select(WatchProgress)
+                .where(
+                    WatchProgress.user_id == user.id,
+                    or_(WatchProgress.position >= STARTED_SECONDS, WatchProgress.completed),
+                )
+                .order_by(WatchProgress.updated_at.desc(), WatchProgress.id.desc())
+                .offset(offset)
+                .limit(limit + 1)
+            )
+        )
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        items = await asyncio.gather(*(self._history_item(row) for row in rows))
+        return WatchHistoryPage(
+            items=[item for item in items if item],
+            has_more=has_more,
+            next_offset=offset + len(rows),
+        )
+
+    async def _history_item(self, row: WatchProgress) -> WatchHistoryItem | None:
+        media_type = MediaType(row.media_type)
         try:
-            data = await self.tmdb.season(series_id, season)
-        except (TmdbNotFoundError, httpx.HTTPError):
-            return None, None
-        for item in data.get("episodes") or []:
-            if item.get("episode_number") == episode:
-                runtime = item.get("runtime")
-                return item.get("name") or None, runtime * 60.0 if runtime else None
-        return None, None
+            details = await self.tmdb.details(media_type, row.media_id)
+        except TmdbNotFoundError:
+            return None
+        except httpx.HTTPError:
+            log.warning("Could not hydrate %s %d", media_type, row.media_id, exc_info=True)
+            return None
+        episode: TmdbJson = {}
+        if row.season is not None and row.episode is not None:
+            episode = await self._episode(row.media_id, row.season, row.episode)
+        return WatchHistoryItem(
+            media=to_summary(media_type, details),
+            season=row.season,
+            episode=row.episode,
+            episode_title=episode.get("name") or None,
+            still_path=episode.get("still_path"),
+            position=row.position,
+            duration=row.duration,
+            completed=row.completed,
+            finished=is_finished(row),
+            resume_at=resume_at(row),
+            watched_at=row.updated_at,
+        )

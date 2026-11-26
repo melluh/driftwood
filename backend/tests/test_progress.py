@@ -210,3 +210,41 @@ def test_next_episode() -> None:
     assert next_episode(SERIES, 0, 1) == (0, 2)
     assert next_episode(SERIES, 0, 2) is None
     assert next_episode({**SERIES, "last_episode_to_air": None}, 1, 1) is None
+
+
+async def test_history(client: httpx.AsyncClient) -> None:
+    assert (await client.get("/api/progress/history")).json() == {
+        "items": [],
+        "has_more": False,
+        "next_offset": 0,
+    }
+    await _save(client, "movie/603", 7900, 8000)  # finished
+    await _save(client, "tv/1399", 5, 3600, season=1, episode=1)  # only peeked: left out
+    await _save(client, "tv/1399", 1200, 3600, season=1, episode=2)  # part-way
+    await _save(client, "movie/999", 600, 8000)  # unknown to TMDB: left out
+
+    page = (await client.get("/api/progress/history")).json()
+    assert page["has_more"] is False
+    items = [
+        (i["media"]["id"], i["season"], i["episode"], i["finished"], i["completed"])
+        for i in page["items"]
+    ]
+    assert items == [(1399, 1, 2, False, False), (603, None, None, True, True)]
+    episode = page["items"][0]
+    assert episode["episode_title"] == "The Kingsroad"
+    assert episode["position"] == 1200
+    assert episode["resume_at"] == 1200
+    assert episode["media"]["title"] == "Game of Thrones"
+
+    # A rewatch keeps the completion, but the last play is part-way.
+    await _save(client, "movie/603", 600, 8000)
+    first = (await client.get("/api/progress/history")).json()["items"][0]
+    assert (first["media"]["id"], first["completed"], first["finished"]) == (603, True, False)
+
+    # Paging is over rows: newest first, 603 then the unknown 999 (dropped), then 1399.
+    page = (await client.get("/api/progress/history", params={"limit": 2})).json()
+    assert [i["media"]["id"] for i in page["items"]] == [603]
+    assert page["has_more"] is True
+    page = (await client.get("/api/progress/history", params={"limit": 2, "offset": 2})).json()
+    assert [i["media"]["id"] for i in page["items"]] == [1399]
+    assert page["has_more"] is False

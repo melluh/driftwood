@@ -45,3 +45,33 @@ class ContinueWatching(Schema):
     """The episode after the one last finished, rather than one left part-way."""
     updated_at: datetime
     """When the user last watched this title."""
+
+
+class WatchHistoryItem(Schema):
+    """One movie, or one episode of a series, the user has watched."""
+
+    media: MediaSummary
+    season: int | None = None
+    episode: int | None = None
+    episode_title: str | None = None
+    still_path: str | None = None
+    """The episode's TMDB still (16:9), when it has one."""
+    position: float
+    """Seconds: how far the last play got."""
+    duration: float
+    """Seconds."""
+    completed: bool
+    """Watched to the end at some point."""
+    finished: bool
+    """The last play reached the end (`completed` also covers an earlier play)."""
+    resume_at: float
+    """Where playback would pick up: `position` while part-way through, else 0."""
+    watched_at: datetime
+
+
+class WatchHistoryPage(Schema):
+    items: list[WatchHistoryItem]
+    """Most recently watched first."""
+    has_more: bool
+    next_offset: int
+    """The `offset` for the next page (titles TMDB no longer knows are skipped, not counted)."""

@@ -1,11 +1,16 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 
 from driftwood.auth.router import UserDep
 from driftwood.db import DbSession
 from driftwood.media.schemas import MediaType
-from driftwood.progress.schemas import ContinueWatching, WatchProgress, WatchProgressUpdate
+from driftwood.progress.schemas import (
+    ContinueWatching,
+    WatchHistoryPage,
+    WatchProgress,
+    WatchProgressUpdate,
+)
 from driftwood.progress.service import InvalidEpisodeError, WatchProgressService
 
 router = APIRouter(prefix="/progress", tags=["progress"])
@@ -25,6 +30,18 @@ async def continue_watching(
 ) -> list[ContinueWatching]:
     """Movies and episodes left part-way, and series' next episodes; most recent first."""
     return await service.continue_watching(db, user)
+
+
+@router.get("/history")
+async def watch_history(
+    service: ProgressServiceDep,
+    db: DbSession,
+    user: UserDep,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
+) -> WatchHistoryPage:
+    """Movies and episodes the user watched, most recent first, with how far they got."""
+    return await service.history(db, user, offset, limit)
 
 
 @router.get("/{media_type}/{media_id}")

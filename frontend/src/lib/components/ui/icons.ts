@@ -4,6 +4,7 @@ export const ICONS = {
 	close: ['M18 6 6 18', 'm6 6 12 12'],
 	plus: ['M12 5v14', 'M5 12h14'],
 	check: ['M20 6 9 17l-5-5'],
+	history: ['M3 12a9 9 0 1 0 2.64-6.36L3 8.3', 'M3 3v5.3h5.3', 'M12 7v5l3.5 2'],
 	'chevron-left': ['m15 18-6-6 6-6'],
 	'chevron-right': ['m9 18 6-6-6-6'],
 	info: ['M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z', 'M12 16v-4', 'M12 8h.01'],

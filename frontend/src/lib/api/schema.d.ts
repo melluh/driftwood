@@ -308,6 +308,26 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/progress/history': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Watch History
+		 * @description Movies and episodes the user watched, most recent first, with how far they got.
+		 */
+		get: operations['watch_history_api_progress_history_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/progress/{media_type}/{media_id}': {
 		parameters: {
 			query?: never;
@@ -1215,6 +1235,45 @@ export interface components {
 			episode: number;
 		};
 		/**
+		 * WatchHistoryItem
+		 * @description One movie, or one episode of a series, the user has watched.
+		 */
+		WatchHistoryItem: {
+			media: components['schemas']['MediaSummary'];
+			/** Season */
+			season: number | null;
+			/** Episode */
+			episode: number | null;
+			/** Episode Title */
+			episode_title: string | null;
+			/** Still Path */
+			still_path: string | null;
+			/** Position */
+			position: number;
+			/** Duration */
+			duration: number;
+			/** Completed */
+			completed: boolean;
+			/** Finished */
+			finished: boolean;
+			/** Resume At */
+			resume_at: number;
+			/**
+			 * Watched At
+			 * Format: date-time
+			 */
+			watched_at: string;
+		};
+		/** WatchHistoryPage */
+		WatchHistoryPage: {
+			/** Items */
+			items: components['schemas']['WatchHistoryItem'][];
+			/** Has More */
+			has_more: boolean;
+			/** Next Offset */
+			next_offset: number;
+		};
+		/**
 		 * WatchPlan
 		 * @description Which release to grab to start watching now, plus higher-quality alternatives.
 		 */
@@ -1324,6 +1383,8 @@ export type SubtitleTrack = components['schemas']['SubtitleTrack'];
 export type TorrentRelease = components['schemas']['TorrentRelease'];
 export type ValidationError = components['schemas']['ValidationError'];
 export type WatchEpisode = components['schemas']['WatchEpisode'];
+export type WatchHistoryItem = components['schemas']['WatchHistoryItem'];
+export type WatchHistoryPage = components['schemas']['WatchHistoryPage'];
 export type WatchPlan = components['schemas']['WatchPlan'];
 export type WatchProgress = components['schemas']['WatchProgress'];
 export type WatchProgressUpdate = components['schemas']['WatchProgressUpdate'];
@@ -1770,6 +1831,38 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['ContinueWatching'][];
+				};
+			};
+		};
+	};
+	watch_history_api_progress_history_get: {
+		parameters: {
+			query?: {
+				offset?: number;
+				limit?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['WatchHistoryPage'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
 				};
 			};
 		};

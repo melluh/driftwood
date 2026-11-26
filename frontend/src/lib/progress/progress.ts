@@ -1,10 +1,17 @@
-import { api, type ContinueWatching, type MediaType, type WatchProgress } from '#lib/api/client.ts';
+import {
+	api,
+	type ContinueWatching,
+	type MediaType,
+	type WatchHistoryPage,
+	type WatchProgress
+} from '#lib/api/client.ts';
 import { watchHref } from '#lib/media/format.ts';
 
 type MediaKey = { media_type: MediaType; id: number };
 export type EpisodeKey = { season: number; episode: number };
 
 const RESUME_REWIND_SECONDS = 5;
+const HISTORY_PAGE_SIZE = 30;
 
 function path(media: MediaKey) {
 	return { path: { media_type: media.media_type, media_id: media.id } };
@@ -58,8 +65,26 @@ export async function saveProgress(
 		.catch(() => {});
 }
 
-/** The watch page for a continue-watching entry, at its episode. */
-export function continueHref(item: ContinueWatching): string {
+/** A page of watch history, newest first; null when it can't be loaded. */
+export async function loadHistory(
+	offset: number,
+	fetch: typeof globalThis.fetch = globalThis.fetch
+): Promise<WatchHistoryPage | null> {
+	const { data } = await api
+		.GET('/api/progress/history', {
+			params: { query: { offset, limit: HISTORY_PAGE_SIZE } },
+			fetch
+		})
+		.catch(() => ({ data: null }));
+	return data ?? null;
+}
+
+/** The watch page for a movie, or a series at one episode. */
+export function continueHref(item: {
+	media: MediaKey;
+	season?: number | null;
+	episode?: number | null;
+}): string {
 	const href = watchHref(item.media.media_type, item.media.id);
 	return item.season != null && item.episode != null
 		? `${href}?season=${item.season}&episode=${item.episode}`

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import type { CurrentUser } from '#lib/api/client.ts';
 	import { logout } from '#lib/auth/session.ts';
 	import Icon from '../ui/Icon.svelte';
@@ -8,6 +9,7 @@
 
 	const menuId = $props.id();
 	let open = $state(false);
+	let menu: HTMLDivElement | undefined = $state();
 	let loggingOut = $state(false);
 
 	async function handleLogout() {
@@ -30,6 +32,7 @@
 
 <div
 	id={menuId}
+	bind:this={menu}
 	class="menu"
 	popover="auto"
 	ontoggle={(event) => (open = event.newState === 'open')}
@@ -43,6 +46,12 @@
 	</div>
 
 	<ul role="list">
+		<li>
+			<a href={resolve('/history')} class="item" onclick={() => menu?.hidePopover()}>
+				<Icon name="history" />
+				<span>Watch history</span>
+			</a>
+		</li>
 		<li>
 			<button type="button" class="item" disabled title="Coming soon">
 				<Icon name="settings" />

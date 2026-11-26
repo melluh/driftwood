@@ -44,6 +44,8 @@ export type {
 	SubtitleStatus,
 	SubtitleTrack,
 	TorrentRelease,
+	WatchHistoryItem,
+	WatchHistoryPage,
 	WatchPlan,
 	WatchProgress
 } from './schema';
