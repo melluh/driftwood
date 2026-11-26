@@ -39,15 +39,14 @@
 		radius?: 'none' | 'sm' | 'md';
 	} = $props();
 
-	let loaded = $state(false);
-	let failed = $state(false);
-
-	// A new path is a new image: reset the load state.
-	$effect.pre(() => {
-		void path;
-		loaded = false;
-		failed = false;
-	});
+	// Load state is remembered per path, so a new path starts out unloaded. Don't
+	// reset it in an effect instead: that re-runs whenever the object `path` is
+	// read from is replaced (e.g. a fresh search response with the same result),
+	// hiding an image that already loaded and won't fire `load` again.
+	let loadedPath: string | null = $state(null);
+	let failedPath: string | null = $state(null);
+	const loaded = $derived(!!path && loadedPath === path);
+	const failed = $derived(!!path && failedPath === path);
 
 	const showImage = $derived(!!path && !failed);
 </script>
@@ -62,8 +61,8 @@
 			loading={eager ? 'eager' : 'lazy'}
 			decoding="async"
 			class:loaded
-			onload={() => (loaded = true)}
-			onerror={() => (failed = true)}
+			onload={() => (loadedPath = path)}
+			onerror={() => (failedPath = path)}
 		/>
 	{/if}
 	{#if !showImage && placeholderIcon}
