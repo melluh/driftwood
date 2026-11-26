@@ -1,3 +1,4 @@
+import os
 import tempfile
 from functools import lru_cache
 from pathlib import Path
@@ -119,6 +120,10 @@ class LibrarySettings(BaseModel):
         return self
 
 
+def _default_trickplay_workers() -> int:
+    return max(1, min(8, (os.cpu_count() or 2) // 2))
+
+
 class PlaybackSettings(BaseModel):
     directory: Path = Field(
         default_factory=lambda: Path(tempfile.gettempdir()) / "driftwood-playback"
@@ -138,9 +143,18 @@ class PlaybackSettings(BaseModel):
     session_idle_seconds: int = Field(default=6 * 60 * 60, ge=60)
     """A playback session is forgotten after this long without requests."""
     trickplay_interval_seconds: float = Field(default=10, gt=0)
-    """Seconds between the seek-bar thumbnails Jellyfin saved next to videos
-    (Jellyfin's "Interval" setting, 10 s by default). Thumbnails whose sheet
-    count doesn't fit this interval are ignored."""
+    """Seconds between seek-bar thumbnails. Jellyfin's "Interval" setting (10 s by
+    default) for the thumbnails it saved next to videos: ones whose sheet count
+    doesn't fit this interval are ignored. Driftwood makes its own at it too."""
+    trickplay_generate: bool = True
+    """Make seek-bar thumbnails for videos that have none: as soon as a download is
+    imported, and when a video is first played. They're saved next to the video the
+    way Jellyfin saves them, so the library folders need to be writable."""
+    trickplay_width: int = Field(default=320, ge=64, le=1920)
+    """Width of a generated thumbnail in pixels (Jellyfin's default)."""
+    trickplay_workers: int = Field(default_factory=_default_trickplay_workers, ge=1)
+    """ffmpeg processes making thumbnail sheets at once, each one whole sheet. They
+    run at a low CPU priority; the default is half the CPU cores, at most 8."""
 
 
 class PathMapping(BaseModel):

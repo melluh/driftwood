@@ -53,6 +53,7 @@ from driftwood.playback.subtitles import (
     sidecar_tracks,
 )
 from driftwood.playback.trickplay import Trickplay, find_trickplay
+from driftwood.playback.trickplay_generator import Priority, TrickplayGenerator, TrickplayJob
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +87,8 @@ class _Session:
     directory: Path
     subtitle_directory: Path
     trickplay: Trickplay | None = None
+    trickplay_job: TrickplayJob | None = None
+    """Thumbnails being made while the session plays; `trickplay` once they're done."""
     created: float = field(default_factory=time.monotonic)
     last_used: float = field(default_factory=time.monotonic)
     jobs: dict[str, SegmentJob] = field(default_factory=dict)
@@ -150,6 +153,7 @@ class PlaybackService:
         self._indexing: dict[tuple[int, int], asyncio.Task[list[float]]] = {}
         self._extracting: dict[Path, asyncio.Task[None]] = {}
         self._reaper: asyncio.Task[None] | None = None
+        self.trickplay = TrickplayGenerator(settings)
 
     @property
     def _session_root(self) -> Path:
@@ -169,6 +173,7 @@ class PlaybackService:
             await self._close(session)
         for task in [*self._indexing.values(), *self._extracting.values()]:
             task.cancel()
+        await self.trickplay.shutdown()
 
     @staticmethod
     def _finished(tasks: dict[Any, Any], key: object, task: asyncio.Task[Any]) -> None:
@@ -322,6 +327,10 @@ class PlaybackService:
             probe.duration,
             self.settings.trickplay_interval_seconds,
         )
+        job = None
+        if trickplay is None:
+            # Made while this plays: sheets show up in the seek bar as they're done.
+            job = await self.trickplay.submit(candidate.path, probe, Priority.watching)
 
         if can_play_directly(probe, candidate.path.suffix):
             mode, plan = "direct", None
@@ -350,6 +359,7 @@ class PlaybackService:
             / "subtitles"
             / f"{candidate.file.id}-{candidate.file.mtime_ns}-{fingerprint(subtitles)}",
             trickplay=trickplay,
+            trickplay_job=job,
         )
         self._sessions[identifier] = session
         return session
@@ -386,7 +396,6 @@ class PlaybackService:
             for track in session.audio
         ]
         default = next((track for track in tracks if track.default), tracks[0] if tracks else None)
-        trickplay = session.trickplay
         return PlaybackSession(
             id=session.id,
             mode=session.mode,  # type: ignore[arg-type]
@@ -410,19 +419,35 @@ class PlaybackService:
                 for subtitle in session.subtitles
             ],
             fonts=[f"{base}/fonts/{index}" for index in range(len(session.fonts))],
-            trickplay=(
-                PlaybackTrickplay(
-                    sheets=[f"{base}/trickplay/{index}.jpg" for index in range(trickplay.sheets)],
-                    columns=trickplay.columns,
-                    rows=trickplay.rows,
-                    width=trickplay.width,
-                    height=trickplay.height,
-                    interval=trickplay.interval,
-                    count=trickplay.count,
-                )
-                if trickplay
-                else None
-            ),
+            trickplay=self._describe_trickplay(session),
+        )
+
+    def _describe_trickplay(self, session: _Session) -> PlaybackTrickplay | None:
+        job = session.trickplay_job
+        if job is not None and not job.generating and job.error is None:
+            session.trickplay, session.trickplay_job = job.trickplay(), None
+            job = None
+        if job is not None:
+            if not job.generating and not job.ready:
+                return None
+            trickplay = job.trickplay()
+            ready = [index in job.ready for index in range(trickplay.sheets)]
+        elif session.trickplay is not None:
+            trickplay = session.trickplay
+            ready = [True] * trickplay.sheets
+        else:
+            return None
+        base = f"{API_PREFIX}/{session.id}/trickplay"
+        return PlaybackTrickplay(
+            sheets=[f"{base}/{index}.jpg" for index in range(trickplay.sheets)],
+            ready=ready,
+            generating=job is not None and job.generating,
+            columns=trickplay.columns,
+            rows=trickplay.rows,
+            width=trickplay.width,
+            height=trickplay.height,
+            interval=trickplay.interval,
+            count=trickplay.count,
         )
 
     # Serving a session
@@ -440,9 +465,22 @@ class PlaybackService:
             raise PlaybackError(404, "This session streams HLS.")
         return session.path
 
+    def trickplay_status(
+        self, session_id: str, user_id: int, position: float | None
+    ) -> PlaybackTrickplay | None:
+        """The session's thumbnails so far; `position` is where the viewer is, to make
+        the sheets there first."""
+        session = self.session(session_id, user_id)
+        if session.trickplay_job is not None and position is not None:
+            session.trickplay_job.focus_on(position)
+        return self._describe_trickplay(session)
+
     def trickplay_sheet(self, session_id: str, user_id: int, index: int) -> Path:
         session = self.session(session_id, user_id)
-        path = session.trickplay.sheet(index) if session.trickplay else None
+        if session.trickplay_job is not None:
+            path = session.trickplay_job.sheet(index)
+        else:
+            path = session.trickplay.sheet(index) if session.trickplay else None
         if path is None:
             raise PlaybackError(404, "No such preview sheet.")
         return path

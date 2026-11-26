@@ -5,7 +5,7 @@
 -->
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
-	import type { PlaybackSession, PlaybackVersion } from '#lib/api/client.ts';
+	import { api, type PlaybackSession, type PlaybackVersion } from '#lib/api/client.ts';
 	import Button from '#lib/components/ui/Button.svelte';
 	import Icon from '#lib/components/ui/Icon.svelte';
 	import IconButton from '#lib/components/ui/IconButton.svelte';
@@ -68,6 +68,10 @@
 	const SKIP_SECONDS = 10;
 	const IDLE_MS = 3000;
 	const PROGRESS_INTERVAL_MS = 10_000;
+	const TRICKPLAY_POLL_MS = 3000;
+	/** With no new sheet for this long, something's slow: ask only every `TRICKPLAY_SLOW_POLL_MS`. */
+	const TRICKPLAY_STALL_MS = 60_000;
+	const TRICKPLAY_SLOW_POLL_MS = 60_000;
 
 	// Read once: a new session remounts the player.
 	const initial = (() => {
@@ -108,6 +112,10 @@
 	let subtitleStatus = $state<'idle' | 'loading' | 'error'>('idle');
 	let assFallback = $state(false);
 	let hideTimer: ReturnType<typeof setTimeout> | undefined;
+	let trickplay = $state(untrack(() => session.trickplay ?? null));
+	let trickplayRetry = $state(0);
+	/** When the last new sheet became ready (or polling began). */
+	let trickplayProgressAt = Date.now();
 
 	const duration = $derived(
 		Number.isFinite(mediaDuration) && mediaDuration > 0 ? mediaDuration : session.duration
@@ -397,6 +405,43 @@
 		});
 	});
 
+	// Thumbnails still being made arrive a sheet at a time: ask for more while
+	// they are, saying where the viewer is so the server makes those first.
+	// Slower once nothing new has come in for a while.
+	$effect(() => {
+		if (!trickplay?.generating) return;
+		void trickplayRetry;
+		const id = session.id;
+		const readyBefore = trickplay.ready.filter(Boolean).length;
+		const stalled = Date.now() - trickplayProgressAt > TRICKPLAY_STALL_MS;
+		let cancelled = false;
+		const timer = setTimeout(
+			async () => {
+				try {
+					const { data, error } = await api.GET('/api/playback/{session_id}/trickplay', {
+						params: {
+							path: { session_id: id },
+							query: { position: untrack(() => currentTime) }
+						}
+					});
+					if (cancelled) return;
+					if (error) trickplay = trickplay ? { ...trickplay, generating: false } : null;
+					else trickplay = data ?? null;
+					if ((trickplay?.ready.filter(Boolean).length ?? 0) > readyBefore) {
+						trickplayProgressAt = Date.now();
+					}
+				} catch {
+					if (!cancelled) trickplayRetry++;
+				}
+			},
+			stalled ? TRICKPLAY_SLOW_POLL_MS : TRICKPLAY_POLL_MS
+		);
+		return () => {
+			cancelled = true;
+			clearTimeout(timer);
+		};
+	});
+
 	onMount(() => {
 		video.volume = volume;
 		video.muted = muted;
@@ -551,7 +596,7 @@
 			</div>
 		{/if}
 
-		<SeekBar {currentTime} {duration} {buffered} trickplay={session.trickplay} onseek={seek} />
+		<SeekBar {currentTime} {duration} {buffered} {trickplay} onseek={seek} />
 
 		<div class="bar">
 			<button

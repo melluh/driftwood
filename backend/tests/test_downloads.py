@@ -283,8 +283,20 @@ RELEASE = Release(
 )
 
 
+class FakeTrickplay:
+    def __init__(self) -> None:
+        self.requested: list[Path] = []
+
+    def request(self, video: Path) -> None:
+        self.requested.append(video)
+
+
 def make_service(
-    tmp_path: Path, database: Database, qbit: FakeQbittorrent, torrent: bytes
+    tmp_path: Path,
+    database: Database,
+    qbit: FakeQbittorrent,
+    torrent: bytes,
+    trickplay: FakeTrickplay | None = None,
 ) -> tuple[DownloadService, FakeIndexers]:
     library_settings = LibrarySettings(
         roots=[LibraryRoot(name="movies", path=tmp_path / "movies", kind="movies")],
@@ -306,6 +318,7 @@ def make_service(
         indexers=indexers,  # type: ignore[arg-type]
         library=LibraryService(library_settings, database),
         client=client,
+        trickplay=trickplay,  # type: ignore[arg-type]
     )
     return service, indexers
 
@@ -319,7 +332,8 @@ async def test_download_then_import_into_the_library(tmp_path: Path, database: D
     torrent = torrent_bytes()
     torrent_hash = infohash(torrent)
     qbit = FakeQbittorrent(save_path="/downloads/driftwood")
-    service, indexers = make_service(tmp_path, database, qbit, torrent)
+    trickplay = FakeTrickplay()
+    service, indexers = make_service(tmp_path, database, qbit, torrent, trickplay)
 
     started = await service.start(REQUEST, user_id=None)
     assert started.state == "downloading"
@@ -363,6 +377,8 @@ async def test_download_then_import_into_the_library(tmp_path: Path, database: D
     video = folder / "Dune (2021) [tmdbid-438631] - 1080p WEB-DL H.264-FLUX.mkv"
     assert os.path.samefile(video, content / f"{content.name}.mkv")
     assert (folder / "Dune (2021) [tmdbid-438631] - 1080p WEB-DL H.264-FLUX.en.srt").exists()
+    # Seek-bar thumbnails are started for it right away.
+    assert trickplay.requested == [video]
     assert await service.active_for(MediaType.movie, 438631, None, None) is None
 
 

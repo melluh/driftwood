@@ -510,6 +510,28 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/playback/{session_id}/trickplay': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Trickplay
+		 * @description The session's seek-bar thumbnails so far, while they're being made.
+		 *
+		 *     `position` (seconds) is where the viewer is: the sheets there are made next.
+		 */
+		get: operations['trickplay_api_playback__session_id__trickplay_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/playback/{session_id}/trickplay/{index}.jpg': {
 		parameters: {
 			query?: never;
@@ -1020,6 +1042,13 @@ export interface components {
 		PlaybackTrickplay: {
 			/** Sheets */
 			sheets: string[];
+			/** Ready */
+			ready: boolean[];
+			/**
+			 * Generating
+			 * @default false
+			 */
+			generating: boolean;
 			/** Columns */
 			columns: number;
 			/** Rows */
@@ -2178,6 +2207,39 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	trickplay_api_playback__session_id__trickplay_get: {
+		parameters: {
+			query?: {
+				position?: number | null;
+			};
+			header?: never;
+			path: {
+				session_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PlaybackTrickplay'] | null;
+				};
 			};
 			/** @description Validation Error */
 			422: {

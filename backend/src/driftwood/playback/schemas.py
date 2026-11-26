@@ -68,6 +68,10 @@ class PlaybackTrickplay(Schema):
 
     sheets: list[str]
     """JPEG URLs, each a grid of `columns` x `rows` thumbnails."""
+    ready: list[bool]
+    """Which sheets can be fetched yet: all of them, unless `generating`."""
+    generating: bool = False
+    """The sheets are still being made. Fetch the session's `trickplay` again for more."""
     columns: int
     rows: int
     width: int
@@ -89,7 +93,7 @@ class PlaybackSession(Schema):
     fonts: list[str]
     """Fonts embedded in the file, for rendering its ASS subtitles."""
     trickplay: PlaybackTrickplay | None = None
-    """Thumbnails Jellyfin saved next to the file, when it has them."""
+    """Seek-bar thumbnails, when the file has them or they're being made."""
 
 
 class PlaybackOffer(Schema):

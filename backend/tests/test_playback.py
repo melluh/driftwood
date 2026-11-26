@@ -1,4 +1,6 @@
 import asyncio
+import contextlib
+import json
 import shutil
 import subprocess
 import sys
@@ -24,7 +26,15 @@ from driftwood.playback.router import router as playback_router
 from driftwood.playback.segments import SegmentJob, SegmentPlan, SegmentSource
 from driftwood.playback.service import PlaybackService
 from driftwood.playback.subtitles import embedded_command, embedded_tracks
-from driftwood.playback.trickplay import find_trickplay, jpeg_size
+from driftwood.playback.trickplay import MARKER, find_trickplay, jpeg_size
+from driftwood.playback.trickplay_generator import (
+    Layout,
+    Priority,
+    TrickplayGenerator,
+    TrickplayJob,
+    sheet_filter,
+    thumbnail_size,
+)
 from tests.test_auth import PUBLIC_URL, FakeIdp, make_app, sign_in
 
 needs_ffmpeg = pytest.mark.skipif(
@@ -305,24 +315,36 @@ async def database(tmp_path: Path) -> AsyncIterator[Database]:
     await database.dispose()
 
 
-@pytest.fixture
-async def client(database: Database, media, tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
+@contextlib.asynccontextmanager
+async def _client(
+    database: Database, root: Path, settings: PlaybackSettings
+) -> AsyncIterator[httpx.AsyncClient]:
     library = LibrarySettings(
-        roots=[LibraryRoot(name="movies", path=media["root"], kind="movies")], min_size_mb=0
+        roots=[LibraryRoot(name="movies", path=root, kind="movies")], min_size_mb=0
     )
     library_service = LibraryService(library, database)
     await library_service.scanner.scan_all()
-    playback = PlaybackService(PlaybackSettings(directory=tmp_path / "playback"), library)
+    playback = PlaybackService(settings, library)
     await playback.start()
     idp = FakeIdp()
     app = make_app(database, idp)
     app.include_router(playback_router, prefix="/api")
     app.state.playback_service = playback
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url=PUBLIC_URL) as client:
-        await sign_in(client, idp)
+    try:
+        async with httpx.AsyncClient(transport=transport, base_url=PUBLIC_URL) as client:
+            await sign_in(client, idp)
+            yield client
+    finally:
+        await playback.shutdown()
+
+
+@pytest.fixture
+async def client(database: Database, media, tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
+    # The media is shared by the module's tests: nothing may add thumbnails to it.
+    settings = PlaybackSettings(directory=tmp_path / "playback", trickplay_generate=False)
+    async with _client(database, media["root"], settings) as client:
         yield client
-    await playback.shutdown()
 
 
 @needs_ffmpeg
@@ -453,3 +475,169 @@ def test_paused_ffmpeg_dies_with_a_crashed_server(tmp_path: Path) -> None:
             break
         time.sleep(0.05)
     assert not Path(f"/proc/{pid}").exists()
+
+
+def test_thumbnails_keep_the_display_aspect_ratio() -> None:
+    assert thumbnail_size({"width": 1920, "height": 800}, 320) == (320, 134)
+    # Anamorphic PAL DVD: 720x576 frames shown at 16:9.
+    anamorphic = {"width": 720, "height": 576, "sample_aspect_ratio": "64:45"}
+    assert thumbnail_size(anamorphic, 320) == (320, 180)
+    assert thumbnail_size({**anamorphic, "sample_aspect_ratio": "0:1"}, 320) == (320, 256)
+    # A phone video stored sideways, shown upright.
+    rotated = {"width": 1920, "height": 1080, "side_data_list": [{"rotation": -90}]}
+    assert thumbnail_size(rotated, 320) == (320, 568)
+
+
+def test_sheets_from_the_viewers_position_onwards_go_first() -> None:
+    layout = Layout(width=320, height=180, columns=10, rows=10, interval=10, count=943)
+    job = TrickplayJob(
+        video=Path("film.mkv"),
+        directory=Path("film.trickplay"),
+        layout=layout,
+        video_index=0,
+        transfer=None,
+        stamp={},
+        priority=Priority.imported,
+        pending=set(range(layout.sheets)),
+    )
+    job.focus_on(4321)  # in sheet 4, which covers 4000-5000 s
+    order = []
+    while (index := job.next_sheet()) is not None:
+        job.pending.discard(index)
+        order.append(index)
+    assert order == [4, 5, 6, 7, 8, 9, 3, 2, 1, 0]
+    job.focus_on(1e9)
+    assert job.focus == 9
+
+
+async def _generate(generator: TrickplayGenerator, video: Path) -> TrickplayJob:
+    probe = await probe_file("ffprobe", video)
+    job = await generator.submit(video, probe, Priority.imported)
+    assert job is not None
+    await asyncio.wait_for(job.done.wait(), 60)
+    assert job.error is None
+    return job
+
+
+@needs_ffmpeg
+async def test_sheets_made_side_by_side_match_one_pass_over_the_file(media, tmp_path) -> None:
+    video = tmp_path / "Movie.mkv"
+    shutil.copyfile(media["mkv"], video)
+    settings = PlaybackSettings(trickplay_interval_seconds=2, trickplay_width=64)
+    generator = TrickplayGenerator(settings, columns=2, rows=2)
+    try:
+        job = await _generate(generator, video)
+    finally:
+        await generator.shutdown()
+
+    # 45 s, a thumbnail every 2 s: 23 of them on six 2x2 sheets.
+    trickplay = find_trickplay(video, 45, 2)
+    assert trickplay is not None
+    assert trickplay.directory == tmp_path / "Movie.trickplay" / "64 - 2x2"
+    assert (trickplay.sheets, trickplay.count, trickplay.width, trickplay.height) == (6, 23, 64, 36)
+    assert sorted(path.name for path in trickplay.directory.iterdir()) == [
+        f"{index}.jpg" for index in range(6)
+    ]
+    reference = tmp_path / "reference"
+    reference.mkdir()
+    _ffmpeg("-skip_frame", "nokey", "-i", str(video), "-map", "0:v:0",
+            "-vf", sheet_filter(job.layout), "-c:v", "mjpeg", "-q:v", "4",
+            "-start_number", "0", str(reference / "%d.jpg"))  # fmt: skip
+    for index in range(6):
+        made = (trickplay.directory / f"{index}.jpg").read_bytes()
+        assert made == (reference / f"{index}.jpg").read_bytes(), f"sheet {index}"
+
+
+@needs_ffmpeg
+async def test_an_interrupted_run_carries_on_and_other_sheets_are_left_alone(
+    media, tmp_path
+) -> None:
+    video = tmp_path / "Movie.mkv"
+    shutil.copyfile(media["mkv"], video)
+    settings = PlaybackSettings(trickplay_interval_seconds=2, trickplay_width=64)
+    generator = TrickplayGenerator(settings, columns=2, rows=2)
+    try:
+        job = await _generate(generator, video)
+        directory = job.directory
+        # Cut short after two sheets: the marker's still there, the rest isn't.
+        (directory / MARKER).write_text(json.dumps(job.stamp), encoding="utf-8")
+        for index in range(2, 6):
+            (directory / f"{index}.jpg").unlink()
+        (directory / ".3.jpg.tmp").write_bytes(b"half a sheet")
+        kept = (directory / "1.jpg").stat().st_ino
+        assert find_trickplay(video, 45, 2) is None  # unfinished: not taken for a whole set
+
+        generator = TrickplayGenerator(settings, columns=2, rows=2)
+        probe = await probe_file("ffprobe", video)
+        job = await generator.submit(video, probe, Priority.imported)
+        assert job is not None
+        assert job.ready == {0, 1}
+        await asyncio.wait_for(job.done.wait(), 60)
+        assert (directory / "1.jpg").stat().st_ino == kept
+        assert find_trickplay(video, 45, 2) is not None
+        assert not (directory / ".3.jpg.tmp").exists()
+
+        # Sheets that don't fit and aren't Driftwood's (Jellyfin's, at another interval).
+        (directory / "5.jpg").unlink()
+        generator = TrickplayGenerator(settings, columns=2, rows=2)
+        assert await generator.submit(video, probe, Priority.imported) is None
+        assert not (directory / "5.jpg").exists()
+    finally:
+        await generator.shutdown()
+
+
+@needs_ffmpeg
+async def test_thumbnails_are_made_while_a_video_without_them_plays(
+    database: Database, media, tmp_path: Path
+) -> None:
+    root = tmp_path / "library"
+    shutil.copytree(media["mp4"].parent, root / media["mp4"].parent.name)
+    settings = PlaybackSettings(
+        directory=tmp_path / "playback", trickplay_interval_seconds=1, trickplay_workers=2
+    )
+    request = {"media_type": "movie", "media_id": 2}
+    async with _client(database, root, settings) as client:
+        session = (await client.post("/api/playback", json=request)).json()["session"]
+        trickplay = session["trickplay"]
+        # 45 thumbnails, one a second: a sheet of 100 holds them all.
+        assert trickplay["generating"] is True
+        assert (trickplay["count"], trickplay["ready"]) == (45, [False])
+
+        status = f"/api/playback/{session['id']}/trickplay"
+        for _ in range(600):
+            trickplay = (await client.get(status, params={"position": 30})).json()
+            if not trickplay["generating"]:
+                break
+            await asyncio.sleep(0.05)
+        assert trickplay["generating"] is False
+        assert trickplay["ready"] == [True]
+        assert (trickplay["width"], trickplay["height"]) == (320, 180)
+        sheet = await client.get(trickplay["sheets"][0])
+        assert sheet.status_code == 200
+        (tmp_path / "sheet.jpg").write_bytes(sheet.content)
+        assert jpeg_size(tmp_path / "sheet.jpg") == (3200, 1800)
+
+        # The next session finds them on disk.
+        session = (await client.post("/api/playback", json=request)).json()["session"]
+        assert session["trickplay"]["generating"] is False
+
+
+@needs_ffmpeg
+async def test_a_download_and_a_viewer_asking_at_once_share_one_job(media, tmp_path) -> None:
+    video = tmp_path / "Movie.mkv"
+    shutil.copyfile(media["mkv"], video)
+    settings = PlaybackSettings(trickplay_interval_seconds=2, trickplay_width=64)
+    generator = TrickplayGenerator(settings, columns=2, rows=2)
+    try:
+        probe = await probe_file("ffprobe", video)
+        imported, watching = await asyncio.gather(
+            generator.submit(video, probe, Priority.imported),
+            generator.submit(video, probe, Priority.watching),
+        )
+        assert imported is watching is not None
+        assert imported.priority is Priority.watching
+        await asyncio.wait_for(imported.done.wait(), 60)
+        assert imported.error is None
+        assert find_trickplay(video, 45, 2) is not None
+    finally:
+        await generator.shutdown()

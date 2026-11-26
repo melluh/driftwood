@@ -1,13 +1,13 @@
 import asyncio
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
 from fastapi.responses import FileResponse
 
 from driftwood.auth.router import UserDep
 from driftwood.db import DbSession
 from driftwood.playback.errors import PlaybackError
-from driftwood.playback.schemas import PlaybackOffer, PlaybackRequest
+from driftwood.playback.schemas import PlaybackOffer, PlaybackRequest, PlaybackTrickplay
 from driftwood.playback.service import PlaybackService
 
 router = APIRouter(prefix="/playback", tags=["playback"])
@@ -99,6 +99,22 @@ async def subtitle(
         "sup": "application/octet-stream",
     }[kind]
     return FileResponse(path, media_type=media_type, headers=_PRIVATE)
+
+
+@router.get("/{session_id}/trickplay")
+async def trickplay(
+    service: PlaybackServiceDep,
+    user: UserDep,
+    session_id: SessionId,
+    position: Annotated[float | None, Query(ge=0)] = None,
+) -> PlaybackTrickplay | None:
+    """The session's seek-bar thumbnails so far, while they're being made.
+
+    `position` (seconds) is where the viewer is: the sheets there are made next."""
+    try:
+        return service.trickplay_status(session_id, user.id, position)
+    except PlaybackError as exc:
+        raise _http(exc) from exc
 
 
 @router.get("/{session_id}/trickplay/{index}.jpg", response_class=FileResponse)

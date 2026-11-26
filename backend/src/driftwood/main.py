@@ -107,6 +107,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             indexers=indexers,
             library=library_service,
             client=QbittorrentClient(qbittorrent) if qbittorrent else None,
+            trickplay=playback_service.trickplay,
         )
         app.state.download_service = download_service
         app.state.watch_service = WatchService(

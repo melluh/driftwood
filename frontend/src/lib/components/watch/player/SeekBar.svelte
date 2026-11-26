@@ -39,14 +39,16 @@
 	const shown = $derived(scrubbing ?? currentTime);
 	const previewTime = $derived(scrubbing ?? hover?.time ?? null);
 
-	/** Which sheet holds the thumbnail for a time, and where on it. */
+	/** Which sheet holds the thumbnail for a time, and where on it (while that sheet is ready). */
 	function tile(time: number) {
 		if (!trickplay || trickplay.count < 1) return null;
 		const perSheet = trickplay.columns * trickplay.rows;
 		const index = Math.min(Math.max(Math.floor(time / trickplay.interval), 0), trickplay.count - 1);
 		const position = index % perSheet;
+		const sheet = Math.floor(index / perSheet);
+		if (!trickplay.ready[sheet]) return null;
 		return {
-			sheet: Math.floor(index / perSheet),
+			sheet,
 			column: position % trickplay.columns,
 			row: Math.floor(position / trickplay.columns)
 		};
@@ -56,24 +58,28 @@
 
 	// Sheets are fetched while previewing, the neighbours too since scrubbing
 	// usually carries on into them. A thumbnail shows once its whole sheet is in,
-	// rather than as a half-drawn grid; a sheet that fails stays blank.
+	// rather than as a half-drawn grid; a sheet that fails stays blank. Sheets
+	// still being made are skipped until they're ready.
 	/** Sheet index → whether it has finished loading. */
 	const sheets = new SvelteMap<number, boolean>();
+	/** The session's first sheet URL: the same while more sheets become ready. */
+	const source = $derived(trickplay?.sheets[0] ?? null);
 	$effect(() => {
 		if (!trickplay || !thumbnail) return;
-		const urls = trickplay.sheets;
+		const { sheets: urls, ready } = trickplay;
+		const loading = source;
 		for (const index of [thumbnail.sheet, thumbnail.sheet + 1, thumbnail.sheet - 1]) {
-			if (index < 0 || index >= urls.length || untrack(() => sheets.has(index))) continue;
+			if (!ready[index] || untrack(() => sheets.has(index))) continue;
 			sheets.set(index, false);
 			const image = new Image();
 			image.onload = () => {
-				if (trickplay?.sheets === urls) sheets.set(index, true);
+				if (source === loading) sheets.set(index, true);
 			};
 			image.src = urls[index];
 		}
 	});
 	$effect(() => {
-		void trickplay;
+		void source;
 		return () => sheets.clear();
 	});
 

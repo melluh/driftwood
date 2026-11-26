@@ -23,6 +23,7 @@ from driftwood.indexers.manager import IndexerManager
 from driftwood.library.service import LibraryService
 from driftwood.media.releases import ReleaseService
 from driftwood.media.schemas import MediaType
+from driftwood.playback.trickplay_generator import TrickplayGenerator
 
 from .bencode import BencodeError, infohash
 from .importer import ImportFailure, Target, execute, plan_import, to_local
@@ -77,6 +78,7 @@ class DownloadService:
         indexers: IndexerManager,
         library: LibraryService,
         client: QbittorrentClient | None,
+        trickplay: TrickplayGenerator | None = None,
     ) -> None:
         self.settings = settings
         self.library_settings = library_settings
@@ -85,6 +87,7 @@ class DownloadService:
         self.indexers = indexers
         self.library = library
         self.client = client
+        self.trickplay = trickplay
         self._live: dict[str, TorrentInfo] = {}
         """Latest qBittorrent numbers by infohash."""
         self._client_error: str | None = None
@@ -414,6 +417,9 @@ class DownloadService:
             row.id, DownloadState.completed, file_id=file_id, completed_at=utcnow(), error=None
         )
         log.info("Download %d is in the library as file %d", row.id, file_id)
+        if self.trickplay is not None:
+            # Often watched right away: seek-bar thumbnails are wanted as soon as possible.
+            self.trickplay.request(plan.video.destination)
 
     async def shutdown(self) -> None:
         for task in list(self._imports.values()):

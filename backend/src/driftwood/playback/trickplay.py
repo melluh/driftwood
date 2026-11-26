@@ -8,6 +8,10 @@ sheet padded out), one thumbnail every `interval` seconds from the start.
 The interval lives in Jellyfin's database rather than on disk, so it's assumed
 (Jellyfin's default is 10 s) and checked against the number of sheets the
 duration needs. Thumbnails at the wrong times are worse than none.
+
+Driftwood makes the same files itself for videos that have none (see
+`trickplay_generator`); a layout directory it's still filling holds a
+`MARKER` file and is skipped here until the last sheet is in.
 """
 
 import math
@@ -17,6 +21,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 _LAYOUT = re.compile(r"^(\d+) - (\d+)x(\d+)$")
+MARKER = ".driftwood-partial"
+"""In a layout directory whose sheets are still being made."""
 _PREFERRED_WIDTH = 320
 # Start-of-frame markers: baseline, extended, progressive, lossless (and their
 # arithmetic-coded variants). 0xC4, 0xC8 and 0xCC are other segments.
@@ -74,6 +80,16 @@ def jpeg_size(path: Path) -> tuple[int, int] | None:
         return None
 
 
+def layout_directory(video: Path, width: int, columns: int, rows: int) -> Path:
+    """Where Jellyfin keeps `width`-pixel thumbnails of `video`, `columns` x `rows` a sheet."""
+    return video.with_name(f"{video.stem}.trickplay") / f"{width} - {columns}x{rows}"
+
+
+def thumbnail_count(duration: float, interval: float) -> int:
+    """Thumbnails covering a video: one at 0 s, then one every `interval` seconds."""
+    return max(1, math.ceil(duration / interval))
+
+
 def _sheet_count(directory: Path) -> int:
     """How many sheets there are, counting 0.jpg, 1.jpg, ... until one is missing."""
     count = 0
@@ -98,10 +114,10 @@ def find_trickplay(video: Path, duration: float, interval: float) -> Trickplay |
     # Several widths can sit side by side; the one nearest Jellyfin's default suits a seek bar.
     layouts.sort(key=lambda layout: abs(layout[0] - _PREFERRED_WIDTH))
     for width, columns, rows, directory in layouts:
-        if not (width and columns and rows):
+        if not (width and columns and rows) or (directory / MARKER).exists():
             continue
         sheets = _sheet_count(directory)
-        thumbnails = max(1, math.ceil(duration / interval))
+        thumbnails = thumbnail_count(duration, interval)
         expected = math.ceil(thumbnails / (columns * rows))
         # A rounding difference at the very end may add or drop one sheet; a
         # different interval (or a different cut of the video) shifts it by more.
