@@ -39,6 +39,7 @@ from driftwood.indexers.models import Release, SearchQuery
 from driftwood.library.service import LibraryService
 from driftwood.media.releases import ReleaseLookup
 from driftwood.media.schemas import MediaDetails, MediaType
+from driftwood.playback.subtitles import MAX_SIDECARS
 
 VIDEO_EXTENSIONS = frozenset({".mkv", ".mp4"})
 DUNE = Target(MediaType.movie, 438631, "Dune", 2021)
@@ -158,6 +159,69 @@ def test_plan_brings_subtitles_along_with_unique_names(tmp_path: Path) -> None:
     ]
 
 
+def _plan(files: list[TorrentFile], tmp_path: Path):
+    return plan_import(
+        files,
+        save_path=tmp_path / "dl",
+        root=tmp_path / "movies",
+        target=DUNE,
+        release_title="Dune.2021.1080p.WEB-DL.H.264-FLUX",
+        video_extensions=VIDEO_EXTENSIONS,
+        min_size_bytes=0,
+        subtitles=True,
+    )
+
+
+def test_files_named_outside_the_save_path_are_ignored(tmp_path: Path) -> None:
+    plan = _plan(
+        [
+            TorrentFile("Dune/Dune.mkv", 1000, 1),
+            # Bigger, so it would be the pick: joined to the save path, they'd escape it.
+            TorrentFile("../../srv/other/Big.mkv", 5000, 1),
+            TorrentFile("/home/user/Huge.mkv", 9000, 1),
+            TorrentFile("/home/user/.ssh/id_rsa.srt", 1, 1),
+            TorrentFile("Dune/../../escape.en.srt", 1, 1),
+            TorrentFile("Dune/Dune.en.srt", 1, 1),
+        ],
+        tmp_path,
+    )
+    assert plan.video.source == tmp_path / "dl/Dune/Dune.mkv"
+    assert [p.source for p in plan.subtitles] == [tmp_path / "dl/Dune/Dune.en.srt"]
+
+
+def test_subtitles_are_capped_like_playback_caps_them(tmp_path: Path) -> None:
+    files = [
+        TorrentFile("Dune/Dune.mkv", 1000, 1),
+        TorrentFile("Dune/Dune.huge.srt", 50 * 1024**2, 1),
+        TorrentFile("Dune/Dune.pgs.sup", 50 * 1024**2, 1),
+        *(TorrentFile(f"Dune/Subs/{index:03d}.srt", 1, 1) for index in range(100)),
+    ]
+    plan = _plan(files, tmp_path)
+    sources = [p.source.name for p in plan.subtitles]
+    assert len(sources) == MAX_SIDECARS
+    assert "Dune.huge.srt" not in sources
+    assert "Dune.pgs.sup" in sources
+
+
+def test_symlinks_are_not_imported(tmp_path: Path) -> None:
+    secret = tmp_path / "secret.srt"
+    secret.write_text("api key")
+    save_path = tmp_path / "dl"
+    (save_path / "Dune").mkdir(parents=True)
+    link = save_path / "Dune" / "Dune.en.srt"
+    link.symlink_to(secret)
+    with pytest.raises(importer.ImportFailure, match="regular file"):
+        place(Placement(link, tmp_path / "lib" / "a.srt", save_path), "copy")
+
+    # A folder of the torrent that is a symlink leads out of it just the same.
+    (save_path / "Subs").symlink_to(tmp_path)
+    with pytest.raises(importer.ImportFailure, match="outside"):
+        place(Placement(save_path / "Subs" / "secret.srt", tmp_path / "lib" / "b.srt", save_path),
+              "copy")  # fmt: skip
+    assert not (tmp_path / "lib" / "a.srt").exists()
+    assert not (tmp_path / "lib" / "b.srt").exists()
+
+
 def test_path_mappings_use_the_longest_prefix() -> None:
     mappings = [
         PathMapping(remote="/downloads", local=Path("/srv/torrents")),
@@ -173,20 +237,20 @@ def test_place_hardlinks(tmp_path: Path) -> None:
     source.parent.mkdir()
     source.write_bytes(b"video")
     target = tmp_path / "lib" / "Movie" / "video.mkv"
-    assert place(Placement(source, target), "copy") == "hardlink"
+    assert place(Placement(source, target, tmp_path / "dl"), "copy") == "hardlink"
     assert os.path.samefile(source, target)
-    assert place(Placement(source, target), "copy") == "existing"
+    assert place(Placement(source, target, tmp_path / "dl"), "copy") == "existing"
 
 
 def test_place_copies_across_filesystems(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def no_link(*_: Any) -> None:
+    def no_link(*_: Any, **__: Any) -> None:
         raise OSError(errno.EXDEV, "Invalid cross-device link")
 
     monkeypatch.setattr(importer.os, "link", no_link)
     source = tmp_path / "video.mkv"
     source.write_bytes(b"video")
     target = tmp_path / "lib" / "video.mkv"
-    assert place(Placement(source, target), "copy") == "copy"
+    assert place(Placement(source, target, tmp_path), "copy") == "copy"
     assert target.read_bytes() == b"video" and source.exists()
     assert not any(p.name.endswith(".partial") for p in target.parent.iterdir())
 

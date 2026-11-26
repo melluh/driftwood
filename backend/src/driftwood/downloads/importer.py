@@ -15,12 +15,14 @@ import logging
 import os
 import re
 import shutil
+import stat
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Literal
 
 from driftwood.config import PathMapping
 from driftwood.media.schemas import MediaType
+from driftwood.playback.subtitles import MAX_SIDECARS, sidecar_size_limit
 from driftwood.selection.classification import classify_release
 from driftwood.selection.nfo import normalize_language
 
@@ -66,6 +68,8 @@ class Target:
 class Placement:
     source: Path
     destination: Path
+    within: Path
+    """The directory `source` must stay inside: the torrent's save path."""
 
 
 @dataclass(frozen=True)
@@ -110,6 +114,15 @@ def version_label(release_title: str) -> str:
     if attributes.release_group:
         label += f"-{safe_name(attributes.release_group)}"
     return label
+
+
+def _safe_relative(name: str) -> bool:
+    """Whether a file name from the torrent stays inside the save path it's joined to.
+
+    qBittorrent (libtorrent) cleans names up itself; this doesn't rely on it.
+    Joining an absolute name would replace the save path altogether."""
+    path = PurePosixPath(name)
+    return bool(name) and "\0" not in name and not path.is_absolute() and ".." not in path.parts
 
 
 def _is_sample(path: PurePosixPath) -> bool:
@@ -234,6 +247,10 @@ def plan_import(
     min_size_bytes: int,
     subtitles: bool,
 ) -> ImportPlan:
+    unsafe = [file.name for file in files if not _safe_relative(file.name)]
+    if unsafe:
+        log.warning("Ignoring torrent files outside the save path: %r", unsafe[:10])
+        files = [file for file in files if _safe_relative(file.name)]
     video = choose_video(
         files, target, video_extensions=video_extensions, min_size_bytes=min_size_bytes
     )
@@ -244,8 +261,15 @@ def plan_import(
 
     placements: list[Placement] = []
     if subtitles:
+        # The ones playback would offer: a torrent stuffed with subtitles brings no more.
+        sizes = {PurePosixPath(file.name): file.size for file in files}
+        wanted = [
+            path
+            for path in choose_subtitles(files, video_path, video_extensions)
+            if sizes[path] <= sidecar_size_limit(path.suffix)
+        ][:MAX_SIDECARS]
         taken: set[str] = set()
-        for path in choose_subtitles(files, video_path, video_extensions):
+        for path in wanted:
             suffix = subtitle_suffix(path, video_path.stem)
             extension = path.suffix.lower()
             name = f"{video_destination.stem}{suffix}{extension}"
@@ -254,8 +278,10 @@ def plan_import(
                 name = f"{video_destination.stem}.{counter}{suffix}{extension}"
                 counter += 1
             taken.add(name.casefold())
-            placements.append(Placement(save_path / path, video_destination.with_name(name)))
-    return ImportPlan(Placement(save_path / video_path, video_destination), placements)
+            placements.append(
+                Placement(save_path / path, video_destination.with_name(name), save_path)
+            )
+    return ImportPlan(Placement(save_path / video_path, video_destination, save_path), placements)
 
 
 _NO_HARDLINK = {errno.EXDEV, errno.EPERM, errno.EMLINK, errno.EOPNOTSUPP, errno.ENOTSUP}
@@ -266,12 +292,22 @@ def place(placement: Placement, fallback: Literal["copy", "move"]) -> Mode:
     Hardlink `source` to `destination`, or copy / move it when the two aren't on
     one filesystem. The file appears under its final name only once complete
     (the scanner skips the hidden partial file).
+
+    `source` must be a regular file inside `within`: a symlink in the torrent, or
+    a folder of it that is one, could otherwise bring any file of this machine
+    into the library.
     """
     source, target = placement.source, placement.destination
-    if not source.is_file():
+    try:
+        info = os.lstat(source)
+    except FileNotFoundError:
         raise ImportFailure(
             f"{source} isn't there (check DRIFTWOOD_DOWNLOADS__QBITTORRENT__PATH_MAPPINGS)"
-        )
+        ) from None
+    if not stat.S_ISREG(info.st_mode):
+        raise ImportFailure(f"{source} isn't a regular file")
+    if not source.resolve(strict=True).is_relative_to(placement.within.resolve(strict=True)):
+        raise ImportFailure(f"{source} is outside the torrent's save path")
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists() and os.path.samefile(source, target):
         return "existing"
@@ -279,7 +315,7 @@ def place(placement: Placement, fallback: Literal["copy", "move"]) -> Mode:
     partial.unlink(missing_ok=True)
     try:
         try:
-            os.link(source, partial)
+            os.link(source, partial, follow_symlinks=False)
             mode: Mode = "hardlink"
         except OSError as exc:
             if exc.errno not in _NO_HARDLINK:
@@ -288,8 +324,8 @@ def place(placement: Placement, fallback: Literal["copy", "move"]) -> Mode:
                 shutil.move(source, partial)
                 mode = "move"
             else:
-                shutil.copyfile(source, partial)
-                shutil.copystat(source, partial)
+                shutil.copyfile(source, partial, follow_symlinks=False)
+                shutil.copystat(source, partial, follow_symlinks=False)
                 mode = "copy"
         os.replace(partial, target)
     finally:

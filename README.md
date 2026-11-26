@@ -172,7 +172,11 @@ DRIFTWOOD_DOWNLOADS__QBITTORRENT__API_KEY=qbt_...
 - Subtitle files that come with it (`.srt`, `.ass`, `.ssa`, `.vtt`, `.sup`, `.idx`/`.sub`) are
   placed next to the video as `<video name>.<language>[.forced|.sdh].<ext>`, reading the language
   from names like `Movie.eng.srt` or `Subs/2_English.srt`. `DRIFTWOOD_DOWNLOADS__SUBTITLES=false`
-  turns this off.
+  turns this off. As playback would, it takes at most 64 of them, each of a size real subtitles
+  have (10 MB of text, 256 MB of pictures).
+- File names come from the torrent, so they aren't trusted: names leading out of the save path
+  (absolute, or with `..`) are ignored, and only regular files are imported, never a symlink or a
+  file reached through one.
 - Files are **hardlinked**, so the torrent keeps seeding from the same data without using extra
   space. That needs the download directory and the library root on one filesystem; otherwise the
   file is copied (`DRIFTWOOD_DOWNLOADS__FALLBACK=move` moves it instead, which saves space but

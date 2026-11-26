@@ -25,7 +25,8 @@ _SIDECAR_DEMUXERS = {"subrip": "srt", "webvtt": "webvtt", "ass": "ass", "ssa": "
 MAX_SIDECARS = 64
 _MAX_TEXT_SIDECAR_BYTES = 10 * 1024**2
 """A feature film's SRT is about 100 KB; ASS with heavy typesetting a few MB."""
-_MAX_PGS_SIDECAR_BYTES = 256 * 1024**2
+_MAX_PICTURE_SIDECAR_BYTES = 256 * 1024**2
+_PICTURE_SUFFIXES = {".sup", ".sub"}
 _HEARING_IMPAIRED = {"sdh", "hi", "cc"}
 _LANGUAGE_NAMES = {
     "english": "eng",
@@ -141,10 +142,16 @@ def _describe_sidecar(path: Path, video_stem: str) -> dict[str, Any]:
     }
 
 
+def sidecar_size_limit(suffix: str) -> int:
+    """The largest subtitle file with this extension worth reading, in bytes."""
+    if suffix.lower() in _PICTURE_SUFFIXES:
+        return _MAX_PICTURE_SIDECAR_BYTES
+    return _MAX_TEXT_SIDECAR_BYTES
+
+
 def _small_enough(path: Path) -> bool:
-    limit = _MAX_PGS_SIDECAR_BYTES if path.suffix.lower() == ".sup" else _MAX_TEXT_SIDECAR_BYTES
     try:
-        return path.stat().st_size <= limit
+        return path.stat().st_size <= sidecar_size_limit(path.suffix)
     except OSError:
         return False
 
