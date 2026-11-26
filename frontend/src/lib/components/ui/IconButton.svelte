@@ -18,7 +18,14 @@
 	} = $props();
 </script>
 
-<button type="button" class="icon-button {size}" class:ghost aria-label={label} title={label} {...rest}>
+<button
+	type="button"
+	class="icon-button {size}"
+	class:ghost
+	aria-label={label}
+	title={label}
+	{...rest}
+>
 	<Icon name={icon} />
 </button>
 

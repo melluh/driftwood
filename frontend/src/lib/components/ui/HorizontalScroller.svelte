@@ -29,14 +29,59 @@
 	let canScrollBack = $state(false);
 	let canScrollForward = $state(false);
 
+	/**
+	 * Share of an edge fade, measured from the outer edge, within which a card
+	 * counts as faded out. Matches the mask's 30%-opacity stop.
+	 */
+	const FADED_SHARE = 0.78;
+
 	function updateScrollState() {
 		if (!list) return;
 		canScrollBack = list.scrollLeft > 1;
 		canScrollForward = list.scrollLeft + list.clientWidth < list.scrollWidth - 1;
+		markFadedItems(list);
+	}
+
+	/** Cards that are (almost) entirely inside an edge fade can't be hovered or clicked. */
+	function markFadedItems(node: HTMLUListElement) {
+		const fadeWidth = parseFloat(getComputedStyle(node).getPropertyValue('--fade-width')) || 0;
+		const backLimit = canScrollBack ? fadeWidth * FADED_SHARE : 0;
+		const forwardLimit = canScrollForward ? fadeWidth * FADED_SHARE : 0;
+		const bounds = node.getBoundingClientRect();
+		for (const child of node.children) {
+			const rect = child.getBoundingClientRect();
+			const faded = rect.right - bounds.left < backLimit || bounds.right - rect.left < forwardLimit;
+			child.toggleAttribute('data-faded', faded);
+		}
+	}
+
+	// New or removed items change which cards sit in the fades
+	$effect(() => {
+		void items.length;
+		updateScrollState();
+	});
+
+	/**
+	 * Stretches or shrinks items slightly from `itemWidth` so a whole number
+	 * of them (gaps included) exactly fills the content column, the list minus
+	 * its gutters. Paging then moves whole cards and every stop looks the same.
+	 */
+	function fitItems(node: HTMLUListElement) {
+		const style = getComputedStyle(node);
+		const target = parseFloat(style.getPropertyValue('--item-width'));
+		const gap = parseFloat(style.columnGap) || 0;
+		const gutter = parseFloat(style.scrollPaddingLeft) || 0;
+		const column = node.clientWidth - 2 * gutter;
+		if (!(target > 0) || column <= 0) return;
+		const count = Math.max(1, Math.round((column + gap) / (target + gap)));
+		node.style.setProperty('--fitted-width', `${(column - (count - 1) * gap) / count}px`);
 	}
 
 	function trackScrollState(node: HTMLUListElement) {
-		const observer = new ResizeObserver(updateScrollState);
+		const observer = new ResizeObserver(() => {
+			fitItems(node);
+			updateScrollState();
+		});
 		observer.observe(node);
 		return () => observer.disconnect();
 	}
@@ -133,8 +178,44 @@
 		};
 	}
 
+	/**
+	 * Pages by whole cards within the content column (the list minus its
+	 * gutters), so a card is never carried past the column into an edge fade.
+	 * Forward: the first card not fully in the column moves to its start.
+	 * Back: the card cut off at the start becomes the last one fully in view.
+	 */
 	function scrollByPage(direction: 1 | -1) {
-		list?.scrollBy({ left: direction * list.clientWidth * 0.85, behavior: 'smooth' });
+		if (!list) return;
+		const gutter = parseFloat(getComputedStyle(list).scrollPaddingLeft) || 0;
+		const bounds = list.getBoundingClientRect();
+		const columnStart = bounds.left + gutter;
+		const columnEnd = bounds.right - gutter;
+		const children = [...list.children];
+		/** Scroll offset that puts `child` at the start of the column. */
+		const startOffset = (child: Element) =>
+			list!.scrollLeft + child.getBoundingClientRect().left - columnStart;
+
+		let target: number | undefined;
+		if (direction === 1) {
+			const next = children.find((child) => child.getBoundingClientRect().right > columnEnd + 1);
+			if (next) target = startOffset(next);
+		} else {
+			const cut = children.findLast(
+				(child) => child.getBoundingClientRect().left < columnStart - 1
+			);
+			if (cut) {
+				// Earliest card start that still keeps `cut` fully in the column
+				const minStart =
+					startOffset(cut) - (columnEnd - columnStart) + cut.getBoundingClientRect().width;
+				const first = children.find((child) => startOffset(child) >= minStart - 1);
+				target = first ? startOffset(first) : 0;
+			}
+		}
+		// Fallback for cards wider than the column: plain paging
+		if (target === undefined || Math.abs(target - list.scrollLeft) < 1) {
+			target = list.scrollLeft + direction * (columnEnd - columnStart);
+		}
+		list.scrollTo({ left: target, behavior: 'smooth' });
 	}
 </script>
 
@@ -163,6 +244,7 @@
 			<IconButton
 				icon="chevron-left"
 				label="Scroll back"
+				size="lg"
 				tabindex={-1}
 				onclick={() => scrollByPage(-1)}
 			/>
@@ -173,6 +255,7 @@
 			<IconButton
 				icon="chevron-right"
 				label="Scroll forward"
+				size="lg"
 				tabindex={-1}
 				onclick={() => scrollByPage(1)}
 			/>
@@ -181,7 +264,21 @@
 </div>
 
 <style>
+	/* Registered so script reads the target item width as resolved pixels */
+	@property --item-width {
+		syntax: '<length>';
+		inherits: true;
+		initial-value: 0px;
+	}
+
 	@property --fade-back {
+		syntax: '<length>';
+		inherits: true;
+		initial-value: 0px;
+	}
+
+	/* Registered so the computed value is a resolved length script can read */
+	@property --fade-width {
 		syntax: '<length>';
 		inherits: true;
 		initial-value: 0px;
@@ -214,7 +311,8 @@
 	ul {
 		display: grid;
 		grid-auto-flow: column;
-		grid-auto-columns: var(--item-width);
+		/* Fitted to the column by fitItems(); the target width until then */
+		grid-auto-columns: var(--fitted-width, var(--item-width));
 		gap: var(--space-4);
 		/* Vertical padding leaves room for the card hover lift, which would
 		   otherwise be clipped by the scroll container */
@@ -226,17 +324,28 @@
 		scroll-snap-type: x proximity;
 		scroll-padding-inline: var(--gutter);
 		scrollbar-width: none;
+		/* Each edge stays fully clear for its outer 60% (where the nav buttons
+		   sit), then eases in towards the content column */
 		mask-image: linear-gradient(
 			to right,
-			transparent,
+			transparent calc(var(--fade-back) * 0.6),
+			rgb(0 0 0 / 0.3) calc(var(--fade-back) * 0.78),
+			rgb(0 0 0 / 0.7) calc(var(--fade-back) * 0.92),
 			#000 var(--fade-back),
 			#000 calc(100% - var(--fade-forward)),
-			transparent
+			rgb(0 0 0 / 0.7) calc(100% - var(--fade-forward) * 0.92),
+			rgb(0 0 0 / 0.3) calc(100% - var(--fade-forward) * 0.78),
+			transparent calc(100% - var(--fade-forward) * 0.6)
 		);
 	}
 
 	li {
 		scroll-snap-align: start;
+	}
+
+	/* Set from script, so Svelte can't see it in the markup */
+	li:global([data-faded]) {
+		pointer-events: none;
 	}
 
 	/* Snapping would fight the pointer; settle() re-aligns on release */
@@ -260,16 +369,32 @@
 		transition: opacity var(--duration-fast);
 	}
 
+	/* Centered in the edge fade's fully clear part, over no visible content
+	   (1.5rem = half the button's width) */
 	.back {
-		left: max(var(--space-2), calc(var(--gutter) - 1.25rem));
+		left: max(var(--space-2), calc(var(--fade-width) / 2 - 1.5rem));
 	}
 
 	.forward {
-		right: max(var(--space-2), calc(var(--gutter) - 1.25rem));
+		right: max(var(--space-2), calc(var(--fade-width) / 2 - 1.5rem));
 	}
 
 	.scroller:hover .nav {
 		opacity: 1;
+	}
+
+	/* Solid, high-contrast buttons so they read over any card */
+	.nav :global(.icon-button) {
+		background: var(--color-surface-raised);
+		border-color: var(--color-border);
+		color: var(--color-text);
+		box-shadow: var(--shadow-lg);
+	}
+
+	.nav :global(.icon-button:hover) {
+		background: var(--color-surface-hover);
+		border-color: var(--color-accent-soft);
+		color: var(--color-accent-strong);
 	}
 
 	@media (hover: none) {

@@ -63,12 +63,7 @@
 		onfocusin={() => rotation.setFocused(true)}
 		onfocusout={handleFocusOut}
 	>
-		<HeroFrame
-			backdropPath={current.backdrop_path}
-			backdropOpacity={0.8}
-			backdropFadeMs={900}
-			tall
-		>
+		<HeroFrame backdropPath={current.backdrop_path} backdropOpacity={0.8} backdropFadeMs={900} tall>
 			<div class="slide">
 				{#key current}
 					<!-- The outgoing slide fades out while the next drifts up into place -->

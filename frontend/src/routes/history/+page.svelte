@@ -76,7 +76,6 @@
 <div class="page">
 	<header>
 		<h1>Watch history</h1>
-		<p>Everything you've watched, newest first.</p>
 	</header>
 
 	{#if !data.history}
