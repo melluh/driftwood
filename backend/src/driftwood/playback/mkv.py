@@ -6,6 +6,7 @@ the start or end of the file, without demuxing the clusters.
 """
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -30,7 +31,11 @@ _CUE_TRACK = 0xF7
 _CLUSTER = 0x1F43B675
 
 _VIDEO_TRACK = 1
-_MAX_ELEMENT = 64 * 1024 * 1024
+_MAX_ELEMENT = 16 * 1024 * 1024
+"""Info, Tracks and SeekHead are kilobytes; Tracks holds every CodecPrivate (ASS headers)."""
+_MAX_CUES = 8 * 1024 * 1024
+"""A 3-hour 4K remux with a keyframe a second has about 300 KB of cues. A file that
+claims more is read by the packet scan instead, which runs sandboxed."""
 _MAX_TOP_LEVEL = 200_000
 
 
@@ -67,19 +72,20 @@ def _parse_header(data: bytes, offset: int) -> tuple[int, int | None, int]:
     return element_id, None if unknown else size, offset + size_length
 
 
-def _children(data: bytes) -> list[tuple[int, bytes]]:
+def _children(data: memoryview) -> Iterator[tuple[int, memoryview]]:
+    """The elements in `data`, one at a time and without copying their payloads."""
     offset = 0
-    children = []
     while offset < len(data):
         element_id, size, start = _parse_header(data, offset)
         if size is None:
             raise _Invalid("unknown-size child element")
-        children.append((element_id, data[start : start + size]))
+        yield element_id, data[start : start + size]
         offset = start + size
-    return children
 
 
-def _uint(data: bytes) -> int:
+def _uint(data: memoryview | bytes) -> int:
+    if len(data) > 8:
+        raise _Invalid("unsigned integer longer than 8 bytes")
     return int.from_bytes(data) if data else 0
 
 
@@ -90,15 +96,17 @@ def _read_header(file, position: int) -> tuple[int, int | None, int]:
     return element_id, size, position + start
 
 
-def _read_payload(file, position: int, expected: int) -> bytes:
+def _read_payload(file, position: int, expected: int, limit: int = _MAX_ELEMENT) -> memoryview:
     element_id, size, start = _read_header(file, position)
-    if element_id != expected or size is None or size > _MAX_ELEMENT:
+    if element_id != expected or size is None:
         raise _Invalid(f"expected element {expected:#x} at {position}")
+    if size > limit:
+        raise _Invalid(f"element {expected:#x} of {size} bytes is too large")
     file.seek(start)
     data = file.read(size)
     if len(data) < size:
         raise _Invalid("truncated element")
-    return data
+    return memoryview(data)
 
 
 def _locate(file, file_size: int) -> tuple[dict[int, int], int]:
@@ -122,7 +130,7 @@ def _locate(file, file_size: int) -> tuple[dict[int, int], int]:
             found.setdefault(element_id, position)
         elif element_id == _SEEK_HEAD and size is not None and size <= _MAX_ELEMENT:
             file.seek(payload)
-            for child_id, seek in _children(file.read(size)):
+            for child_id, seek in _children(memoryview(file.read(size))):
                 if child_id != _SEEK:
                     continue
                 fields = dict(_children(seek))
@@ -163,7 +171,8 @@ def read_keyframes(path: Path) -> list[float] | None:
                 return None
 
             times: set[int] = set()
-            for element_id, point in _children(_read_payload(file, found[_CUES], _CUES)):
+            cues = _read_payload(file, found[_CUES], _CUES, _MAX_CUES)
+            for element_id, point in _children(cues):
                 if element_id != _CUE_POINT:
                     continue
                 cue_time = None

@@ -817,3 +817,36 @@ async def test_no_thumbnails_are_made_for_files_that_cant_play(monkeypatch, tmp_
         await generator.shutdown()
     assert generator.job(video) is None
     assert not (tmp_path / "Movie.trickplay").exists()
+
+
+def _element(element_id: bytes, payload: bytes) -> bytes:
+    """An EBML element with an 8-byte size."""
+    return element_id + b"\x01" + len(payload).to_bytes(7, "big") + payload
+
+
+def _matroska(path: Path, cue_points: list[bytes]) -> Path:
+    """A bare Matroska file with one video track and these CuePoint payloads."""
+    track = bytes([0xD7, 0x81, 0x01, 0x83, 0x81, 0x01])  # TrackNumber 1, TrackType video
+    tracks = _element(b"\x16\x54\xae\x6b", bytes([0xAE, 0x80 | len(track)]) + track)
+    cues = _element(b"\x1c\x53\xbb\x6b", b"".join(_element(b"\xbb", p) for p in cue_points))
+    segment = _element(b"\x18\x53\x80\x67", tracks + cues)
+    path.write_bytes(_element(b"\x1a\x45\xdf\xa3", b"") + segment)
+    return path
+
+
+def _cue_point(time: bytes) -> bytes:
+    positions = bytes([0xF7, 0x81, 0x01])  # CueTrack 1
+    return _element(b"\xb3", time) + _element(b"\xb7", positions)
+
+
+def test_matroska_cues_are_read_within_bounds(tmp_path: Path) -> None:
+    points = [_cue_point(bytes([0, 0, second])) for second in (0, 2, 4)]
+    assert read_keyframes(_matroska(tmp_path / "ok.mkv", points)) == [0, 0.002, 0.004]
+
+    # An index larger than any real one is left for the (sandboxed) packet scan.
+    huge = [_cue_point(b"\x01")] * (9 * 1024**2 // len(_cue_point(b"\x01")))
+    assert read_keyframes(_matroska(tmp_path / "huge.mkv", huge)) is None
+
+    # A 400-byte "integer" isn't one, nor a time that turns into seconds.
+    overlong = [_cue_point(b"\xff" * 400)]
+    assert read_keyframes(_matroska(tmp_path / "overlong.mkv", overlong)) is None
