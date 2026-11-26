@@ -58,6 +58,7 @@ class FakeIdp:
         }
     )
     id_token_issuer: str = ISSUER
+    userinfo_status: int = 200
     pending: dict[str, dict[str, str]] = field(default_factory=dict)
 
     def approve(self, authorize_url: str) -> dict[str, str]:
@@ -114,6 +115,8 @@ class FakeIdp:
                 },
             )
         if path == "/userinfo":
+            if self.userinfo_status != 200:
+                return httpx2.Response(self.userinfo_status, json={"error": "server_error"})
             return httpx2.Response(200, json=self.claims)
         return httpx2.Response(404)
 
@@ -281,23 +284,53 @@ async def test_expired_session(client: httpx.AsyncClient, idp: FakeIdp, database
     assert (await client.get("/api/auth/me")).status_code == 401
 
 
-async def test_session_is_renewed_when_half_expired(
+async def test_session_is_renewed_on_use_at_most_hourly(
     client: httpx.AsyncClient, idp: FakeIdp, database: Database
 ) -> None:
+    """Sessions last 30 days from last use: any request extends one last extended over
+    an hour ago (not only past half its lifetime), re-issuing the cookie."""
     await sign_in(client, idp)
     response = await client.get("/api/auth/me")
     assert SESSION_COOKIE not in response.cookies  # fresh: no renewal yet
 
-    async with database.sessionmaker() as db:
-        await db.execute(update(UserSession).values(expires_at=utcnow() + timedelta(days=1)))
-        await db.commit()
+    async def set_expiry(remaining: timedelta) -> None:
+        async with database.sessionmaker() as db:
+            await db.execute(update(UserSession).values(expires_at=utcnow() + remaining))
+            await db.commit()
+
+    await set_expiry(timedelta(days=30) - timedelta(minutes=30))  # extended half an hour ago
+    assert SESSION_COOKIE not in (await client.get("/api/auth/me")).cookies
+
+    await set_expiry(timedelta(days=30) - timedelta(hours=2))  # well before half its lifetime
     response = await client.get("/api/auth/me")
     assert response.status_code == 200
     assert SESSION_COOKIE in response.cookies
     async with database.sessionmaker() as db:
         expires_at = await db.scalar(select(UserSession.expires_at))
         assert expires_at is not None
-        assert expires_at > utcnow() + timedelta(days=29)
+        assert expires_at > utcnow() + timedelta(days=30) - timedelta(minutes=1)
+
+
+async def test_sign_in_survives_a_failing_userinfo_endpoint(
+    client: httpx.AsyncClient, idp: FakeIdp
+) -> None:
+    """The ID token has no `name`, so the profile is looked up, and that fails: the ID
+    token still identifies the user, so they get in (named by their email)."""
+    del idp.claims["name"]
+    idp.userinfo_status = 500
+    response = await sign_in(client, idp, next="/movie/603")
+    assert response.status_code == 303
+    assert response.headers["location"] == f"{PUBLIC_URL}/movie/603"
+    me = await client.get("/api/auth/me")
+    assert me.status_code == 200
+    assert me.json()["name"] == "ada@example.com"
+
+
+def test_public_url_trailing_slash_is_dropped() -> None:
+    """Paths are appended to it, so `https://host/` would register `//api/auth/callback`."""
+    assert AuthSettings(public_url="https://driftwood.example/").public_url == (
+        "https://driftwood.example"
+    )
 
 
 async def test_unconfigured_provider(database: Database, idp: FakeIdp) -> None:

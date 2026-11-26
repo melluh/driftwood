@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -10,6 +10,31 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
+
+
+def without_foreign_keys(connection: Connection, work: Callable[[], None]) -> None:
+    """Run `work` (migrations) on SQLite with foreign key enforcement off.
+
+    Batch migrations rebuild a table by copying it and dropping the original; with
+    enforcement on, that DROP deletes the rows referencing it (`ON DELETE CASCADE`
+    wipes sessions, My List and watch progress) or fails. Integrity is checked
+    before committing instead. The pragma is a no-op inside a transaction, hence
+    the commits around it.
+    """
+    if connection.dialect.name != "sqlite":
+        work()
+        return
+    connection.commit()
+    connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+    try:
+        work()
+        if violations := connection.exec_driver_sql("PRAGMA foreign_key_check").fetchall():
+            raise RuntimeError(f"Migration would break foreign keys: {violations}")
+        connection.commit()
+    finally:
+        connection.rollback()
+        connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+        connection.commit()
 
 
 def alembic_config() -> Config:
@@ -45,7 +70,8 @@ class Database:
             config.attributes["connection"] = connection
             command.upgrade(config, "head")
 
-        async with self.engine.begin() as connection:
+        # Not `begin()`: the migration manages its transactions (see `without_foreign_keys`).
+        async with self.engine.connect() as connection:
             await connection.run_sync(upgrade)
 
     async def dispose(self) -> None:

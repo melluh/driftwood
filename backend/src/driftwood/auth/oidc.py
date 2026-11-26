@@ -1,5 +1,6 @@
 """The OpenID Connect client (authorization code flow with PKCE, via Authlib)."""
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -7,6 +8,8 @@ from authlib.integrations.starlette_client import OAuth, StarletteOAuth2App
 from starlette.requests import Request
 
 from driftwood.config import AuthSettings
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -59,7 +62,17 @@ class OidcProvider:
 
         # Some providers keep the profile out of the ID token; fill it in from userinfo.
         if metadata.get("userinfo_endpoint") and ("sub" not in claims or "name" not in claims):
-            userinfo = dict(await self.client.userinfo(token=token))
+            try:
+                userinfo = dict(await self.client.userinfo(token=token))
+            except Exception:
+                if "sub" not in claims:
+                    raise  # no ID token to fall back on: there's no identity without it
+                # Just the profile was missing; the ID token already says who this is.
+                log.warning(
+                    "Couldn't fetch the userinfo profile; using the ID token's claims",
+                    exc_info=True,
+                )
+                userinfo = {"sub": claims["sub"]}
             if "sub" in claims and userinfo.get("sub") != claims["sub"]:
                 raise ValueError("userinfo subject does not match the ID token")
             claims = {**userinfo, **claims}

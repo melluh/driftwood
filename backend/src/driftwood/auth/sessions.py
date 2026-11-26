@@ -62,6 +62,11 @@ async def create_session(db: AsyncSession, user: User, ttl: timedelta) -> str:
     return token
 
 
+RENEW_INTERVAL = timedelta(hours=1)
+"""How often an active session's expiry (and cookie) is pushed out: often enough that
+it effectively expires `ttl` after last use, rarely enough not to write every request."""
+
+
 @dataclass
 class ResolvedSession:
     session: UserSession
@@ -70,8 +75,10 @@ class ResolvedSession:
 
 
 async def resolve_session(db: AsyncSession, token: str, ttl: timedelta) -> ResolvedSession | None:
-    """The live session for `token`, or None. Sliding expiry: a session past half
-    its lifetime is extended, so active users stay signed in."""
+    """The live session for `token`, or None. Sliding expiry: a session not extended
+    in the last `RENEW_INTERVAL` is extended to `ttl` from now, so it lasts `ttl`
+    from last use. Renewing this often also means a refreshed cookie that got lost
+    (its request failed after this ran) is simply sent again within the hour."""
     session = await db.get(UserSession, hash_token(token))
     if session is None:
         return None
@@ -80,7 +87,7 @@ async def resolve_session(db: AsyncSession, token: str, ttl: timedelta) -> Resol
         await db.delete(session)
         await db.commit()
         return None
-    renewed = session.expires_at - now < ttl / 2
+    renewed = session.expires_at - now < ttl - RENEW_INTERVAL
     if renewed:
         session.expires_at = now + ttl
         await db.commit()

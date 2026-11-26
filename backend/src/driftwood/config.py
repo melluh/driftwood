@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from driftwood.indexers.torrentleech import TorrentLeechSettings
@@ -244,7 +244,8 @@ class AuthSettings(BaseModel):
 
     public_url: str = "http://localhost:5173"
     """Origin the browser uses to reach Driftwood (frontend and `/api`). The OAuth
-    redirect URI registered with the provider is `<public_url>/api/auth/callback`."""
+    redirect URI registered with the provider is `<public_url>/api/auth/callback`.
+    A trailing slash is dropped, as paths are appended to it."""
 
     secret_key: str = ""
     """Signs the short-lived cookie that carries OAuth state during login. A random
@@ -253,6 +254,11 @@ class AuthSettings(BaseModel):
 
     session_ttl_days: float = 30
     """Sessions expire after this long without use."""
+
+    @field_validator("public_url")
+    @classmethod
+    def _strip_trailing_slash(cls, value: str) -> str:
+        return value.rstrip("/")
 
     @property
     def configured(self) -> bool:

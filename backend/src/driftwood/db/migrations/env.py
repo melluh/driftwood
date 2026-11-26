@@ -10,6 +10,7 @@ from typing import Any, Literal
 from alembic import context
 from sqlalchemy import Connection
 
+from driftwood.db import without_foreign_keys
 from driftwood.db.models import Base, UTCDateTime
 
 target_metadata = Base.metadata
@@ -29,8 +30,12 @@ def run_with_connection(connection: Connection) -> None:
         render_as_batch=True,  # SQLite can't ALTER most things in place
         render_item=render_item,
     )
-    with context.begin_transaction():
-        context.run_migrations()
+
+    def migrate() -> None:
+        with context.begin_transaction():
+            context.run_migrations()
+
+    without_foreign_keys(connection, migrate)
 
 
 async def run_from_settings() -> None:

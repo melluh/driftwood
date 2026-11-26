@@ -13,7 +13,13 @@ export const ssr = false;
  */
 export const load: LayoutLoad = async ({ fetch, url, untrack }) => {
 	const { data: user, response } = await api.GET('/api/auth/me', { fetch });
-	const { pathname, search, searchParams } = untrack(() => url);
+	// Read inside `untrack`: reading `url`'s properties is what would make this load
+	// re-run on every navigation (and call /api/auth/me again).
+	const { pathname, search, next } = untrack(() => ({
+		pathname: url.pathname,
+		search: url.search,
+		next: url.searchParams.get('next')
+	}));
 	const onLoginPage = pathname === resolve('/login');
 
 	if (!user) {
@@ -23,6 +29,6 @@ export const load: LayoutLoad = async ({ fetch, url, untrack }) => {
 	}
 
 	markSignedIn();
-	if (onLoginPage) redirect(307, safeNext(searchParams.get('next')));
+	if (onLoginPage) redirect(307, safeNext(next));
 	return { user };
 };
