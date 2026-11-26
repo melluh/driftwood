@@ -38,8 +38,9 @@ from typing import Any
 
 from driftwood.config import PlaybackSettings
 from driftwood.playback.errors import PlaybackError
+from driftwood.playback.policy import PLAYABLE_SUFFIXES
 from driftwood.playback.probe import MediaProbe, probe_file
-from driftwood.playback.process import BACKGROUND_CHILD_OPTIONS
+from driftwood.playback.process import VIDEO_DECODERS, input_args, spawn
 from driftwood.playback.trickplay import (
     MARKER,
     Trickplay,
@@ -126,6 +127,7 @@ class TrickplayJob:
     video: Path
     directory: Path
     layout: Layout
+    demuxer: str
     video_index: int
     transfer: str | None
     """The video's transfer characteristics, for tone mapping HDR."""
@@ -217,6 +219,9 @@ class TrickplayGenerator:
             self._spawn(self._request(video, priority), f"trickplay-request-{video.name}")
 
     async def _request(self, video: Path, priority: Priority) -> None:
+        if video.suffix.casefold() not in PLAYABLE_SUFFIXES:
+            # Nobody can watch it here, so its thumbnails aren't worth running ffmpeg on it.
+            return
         try:
             video = await asyncio.to_thread(video.resolve, True)
             if video in self._jobs or video in self._failed:
@@ -277,6 +282,8 @@ class TrickplayGenerator:
         stream = probe.video
         if stream is None:
             raise PlaybackError(415, "The file has no video stream.")
+        if probe.demuxer is None or stream.get("codec_name") not in VIDEO_DECODERS:
+            raise PlaybackError(415, "The video can't be played, so it gets no thumbnails.")
         interval = self.settings.trickplay_interval_seconds
         if find_trickplay(video, probe.duration, interval):
             return None
@@ -322,6 +329,7 @@ class TrickplayGenerator:
             video=video,
             directory=directory,
             layout=layout,
+            demuxer=probe.demuxer,
             video_index=int(stream["index"]),
             transfer=stream.get("color_transfer"),
             stamp=stamp,
@@ -403,8 +411,7 @@ class TrickplayGenerator:
             start = index * job.layout.sheet_seconds
             command += ["-noaccurate_seek", "-ss", f"{start:.6f}"]
         command += [
-            "-i",
-            str(job.video),
+            *input_args(job.video, job.demuxer),
             "-map",
             f"0:{job.video_index}",
             "-an",
@@ -426,16 +433,7 @@ class TrickplayGenerator:
             "1",
             str(partial),
         ]
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *command,
-                stdin=asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.PIPE,
-                **BACKGROUND_CHILD_OPTIONS,
-            )
-        except OSError as exc:
-            raise PlaybackError(503, f"Could not run {self.settings.ffmpeg}: {exc}") from exc
+        process = await spawn(command, background=True)
         try:
             _, stderr = await asyncio.wait_for(process.communicate(), _SHEET_TIMEOUT_SECONDS)
         except TimeoutError:
@@ -461,16 +459,18 @@ class TrickplayGenerator:
 
     async def _has_tone_mapping(self) -> bool:
         try:
-            process = await asyncio.create_subprocess_exec(
-                self.settings.ffmpeg,
-                "-hide_banner",
-                "-filters",
-                stdin=asyncio.subprocess.DEVNULL,
+            process = await spawn(
+                [self.settings.ffmpeg, "-hide_banner", "-filters"],
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
             )
-            stdout, _ = await process.communicate()
-        except OSError:
+        except PlaybackError:
+            return False
+        try:
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=30)
+        except TimeoutError:
+            process.kill()
+            await process.wait()
             return False
         names = {line.split()[1] for line in stdout.decode().splitlines() if len(line.split()) > 2}
         if not {"zscale", "tonemap"} <= names:

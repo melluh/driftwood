@@ -26,14 +26,16 @@ from driftwood.db.models import MediaFile, MediaFileLink, MediaFileState
 from driftwood.media.schemas import MediaType
 from driftwood.playback.errors import PlaybackError
 from driftwood.playback.policy import (
+    PLAYABLE_SUFFIXES,
     AudioOutput,
     ClientCapabilities,
     audio_output,
+    can_decode_audio,
     can_play_directly,
     video_problem,
 )
 from driftwood.playback.probe import MediaProbe, find_keyframes, probe_file
-from driftwood.playback.process import CHILD_OPTIONS
+from driftwood.playback.process import input_args, spawn
 from driftwood.playback.schemas import (
     PlaybackAudioTrack,
     PlaybackOffer,
@@ -58,8 +60,19 @@ from driftwood.playback.trickplay_generator import Priority, TrickplayGenerator,
 log = logging.getLogger(__name__)
 
 API_PREFIX = "/api/playback"
-_SUPPORTED_SUFFIXES = {".mkv", ".mp4", ".m4v"}
-_FONT_SUFFIXES = {".ttf", ".otf", ".ttc", ".woff", ".woff2"}
+_FONT_TYPES = {
+    ".ttf": "font/ttf",
+    ".otf": "font/otf",
+    ".ttc": "font/collection",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+}
+"""What a font is served as, by its file name: never the type the file claims to be."""
+_MAX_TRACKS = 64
+"""Audio and embedded subtitle tracks offered, each: real files have a few dozen at most."""
+_MAX_FONTS = 256
+_EXTRACTION_TIMEOUT_SECONDS = 30 * 60
+"""Extracting reads the whole file once; a slow disk can take minutes for a remux."""
 _MAX_SESSIONS_PER_USER = 4
 _REAP_INTERVAL_SECONDS = 15
 _RESOLUTION = re.compile(r"(\d{3,4})p", re.IGNORECASE)
@@ -256,14 +269,17 @@ class PlaybackService:
         candidate = _Candidate(media_file)
         try:
             candidate.path = self._resolve(media_file)
-            if candidate.path.suffix.casefold() not in _SUPPORTED_SUFFIXES:
+            if candidate.path.suffix.casefold() not in PLAYABLE_SUFFIXES:
                 raise PlaybackError(415, f"{candidate.path.suffix} files can't be played yet.")
             candidate.probe = await self._probe(db, media_file, candidate.path)
         except PlaybackError as exc:
             candidate.problem = exc.detail
             return candidate
         video = candidate.probe.video
-        if video is None:
+        if candidate.probe.demuxer is None:
+            # Probed before formats were restricted, and cached since.
+            candidate.problem = "Only Matroska and MP4 files can be played."
+        elif video is None:
             candidate.problem = "The file has no video stream."
         else:
             candidate.problem = video_problem(video, capabilities)
@@ -304,19 +320,21 @@ class PlaybackService:
         probe = candidate.probe
         video = probe.video
         assert video is not None
+        # Tracks ffmpeg may not decode are left out rather than failing the whole rendition.
+        playable_audio = [stream for stream in probe.of_type("audio") if can_decode_audio(stream)]
         audio = [
             _Audio(id=index, stream=stream, output=audio_output(stream))
-            for index, stream in enumerate(probe.of_type("audio"))
+            for index, stream in enumerate(playable_audio[:_MAX_TRACKS])
         ]
-        subtitles = embedded_tracks(probe.of_type("subtitle"))
+        subtitles = embedded_tracks(probe.of_type("subtitle"))[:_MAX_TRACKS]
         subtitles += await asyncio.to_thread(sidecar_tracks, candidate.path, len(subtitles))
         fonts = (
             [
                 stream
                 for stream in probe.of_type("attachment")
-                if Path(_tags(stream).get("filename", "")).suffix.casefold() in _FONT_SUFFIXES
+                if Path(_tags(stream).get("filename", "")).suffix.casefold() in _FONT_TYPES
                 or "font" in _tags(stream).get("mimetype", "")
-            ]
+            ][:_MAX_FONTS]
             if any(s.format == "ass" and s.stream_index is not None for s in subtitles)
             else []
         )
@@ -499,11 +517,13 @@ class PlaybackService:
         else:
             raise PlaybackError(404, "No such rendition.")
         video = session.probe.video
-        assert video is not None
+        demuxer = session.probe.demuxer
+        assert video is not None and demuxer is not None
         job = SegmentJob(
             SegmentSource(
                 ffmpeg=self.settings.ffmpeg,
                 path=session.path,
+                demuxer=demuxer,
                 video_index=int(video["index"]),
                 audio_index=int(audio.stream["index"]) if audio else None,
                 audio=audio.output if audio else None,
@@ -545,7 +565,8 @@ class PlaybackService:
         path = directory / f"font-{index}"
         if not path.is_file():
             raise PlaybackError(404, "The font couldn't be extracted.")
-        return path, _tags(session.fonts[index]).get("mimetype") or "application/octet-stream"
+        suffix = Path(_tags(session.fonts[index]).get("filename", "")).suffix.casefold()
+        return path, _FONT_TYPES.get(suffix, "application/octet-stream")
 
     async def _extract(self, session: _Session) -> Path:
         """Every subtitle track (and the fonts ASS needs), ready to serve.
@@ -570,7 +591,8 @@ class PlaybackService:
         command = [self.settings.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y"]
         for index, font in enumerate(session.fonts):
             command.extend([f"-dump_attachment:{font['index']}", str(partial / f"font-{index}")])
-        command.extend(["-i", str(session.path)])
+        assert session.probe.demuxer is not None
+        command.extend(input_args(session.path, session.probe.demuxer))
         outputs = embedded_command(session.subtitles, partial)
         try:
             if outputs:
@@ -595,15 +617,15 @@ class PlaybackService:
 
     @staticmethod
     async def _run_ffmpeg(args: list[str]) -> None:
-        process = await asyncio.create_subprocess_exec(
-            *args,
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-            **CHILD_OPTIONS,
-        )
+        process = await spawn(args)
         try:
-            _, stderr = await process.communicate()
+            _, stderr = await asyncio.wait_for(
+                process.communicate(), timeout=_EXTRACTION_TIMEOUT_SECONDS
+            )
+        except TimeoutError:
+            process.kill()
+            await process.wait()
+            raise PlaybackError(504, "Timed out extracting subtitles.") from None
         except BaseException:
             if process.returncode is None:
                 process.kill()

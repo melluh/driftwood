@@ -13,8 +13,14 @@ from driftwood.playback.service import PlaybackService
 router = APIRouter(prefix="/playback", tags=["playback"])
 SessionId = Annotated[str, Path(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")]
 Rendition = Annotated[str, Path(pattern=r"^(a\d+|video)$")]
-_NO_STORE = {"Cache-Control": "no-store"}
-_PRIVATE = {"Cache-Control": "private, max-age=3600"}
+# Everything served here is bytes from a torrent, or made from them: the browser
+# must take it for the type it's served as, and never run it as a page of ours.
+_UNTRUSTED = {
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "sandbox; default-src 'none'",
+}
+_NO_STORE = {"Cache-Control": "no-store", **_UNTRUSTED}
+_PRIVATE = {"Cache-Control": "private, max-age=3600", **_UNTRUSTED}
 
 
 def get_playback_service(request: Request) -> PlaybackService:

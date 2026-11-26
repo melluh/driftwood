@@ -10,12 +10,15 @@ from typing import Any
 
 from driftwood.playback.errors import PlaybackError
 from driftwood.playback.mkv import read_keyframes
+from driftwood.playback.process import DEMUXERS, spawn
 
 log = logging.getLogger(__name__)
 
 PROBE_VERSION = 1
 # Cues pointing only at every Nth keyframe would make segments this long.
 _MAX_INDEXED_GAP = 20.0
+# Remuxes have a few dozen streams (anime: a hundred fonts); thousands only make work.
+_MAX_STREAMS = 512
 
 
 @dataclass
@@ -29,6 +32,11 @@ class MediaProbe:
 
     def of_type(self, codec_type: str) -> list[dict[str, Any]]:
         return [stream for stream in self.streams if stream.get("codec_type") == codec_type]
+
+    @property
+    def demuxer(self) -> str | None:
+        """The demuxer to read the file with (one of `DEMUXERS`), or None for another format."""
+        return next((name for name in self.format_name.split(",") if name in DEMUXERS), None)
 
     @property
     def video(self) -> dict[str, Any] | None:
@@ -77,16 +85,7 @@ class MediaProbe:
 
 
 async def _run(executable: str, args: list[str], timeout: float) -> bytes:
-    try:
-        process = await asyncio.create_subprocess_exec(
-            executable,
-            *args,
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-    except OSError as exc:
-        raise PlaybackError(503, f"Could not run {executable}: {exc}") from exc
+    process = await spawn([executable, *args], stdout=asyncio.subprocess.PIPE)
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
     except BaseException:
@@ -104,7 +103,14 @@ async def probe_file(ffprobe: str, path: Path) -> MediaProbe:
     try:
         stdout = await _run(
             ffprobe,
-            ["-v", "error", "-show_format", "-show_streams", "-of", "json", str(path)],
+            [
+                *("-v", "error"),
+                *("-protocol_whitelist", "file"),
+                # Anything else is refused before a demuxer chosen by content parses it.
+                *("-format_whitelist", ",".join(DEMUXERS)),
+                *("-show_format", "-show_streams", "-of", "json"),
+                str(path),
+            ],
             timeout=60,
         )
     except TimeoutError:
@@ -120,6 +126,8 @@ async def probe_file(ffprobe: str, path: Path) -> MediaProbe:
         raise PlaybackError(422, "ffprobe returned unreadable stream information.") from None
     if duration <= 0:
         raise PlaybackError(422, "The media file has no known duration.")
+    if len(streams) > _MAX_STREAMS:
+        raise PlaybackError(422, f"The media file has {len(streams)} streams; that's too many.")
     return MediaProbe(format_name, start_time, duration, streams)
 
 
@@ -142,7 +150,9 @@ async def find_keyframes(ffprobe: str, path: Path, probe: MediaProbe) -> list[fl
     video = probe.video
     if video is None:
         raise PlaybackError(415, "The file has no video stream.")
-    if "matroska" in probe.format_name:
+    if probe.demuxer is None:
+        raise PlaybackError(415, "Only Matroska and MP4 files can be played.")
+    if probe.demuxer == "matroska":
         keyframes = await asyncio.to_thread(read_keyframes, path)
         if _usable(keyframes, probe):
             assert keyframes is not None
@@ -155,6 +165,8 @@ async def find_keyframes(ffprobe: str, path: Path, probe: MediaProbe) -> list[fl
             [
                 "-v",
                 "error",
+                *("-protocol_whitelist", "file"),
+                *("-f", probe.demuxer),
                 "-select_streams",
                 str(video["index"]),
                 "-show_entries",

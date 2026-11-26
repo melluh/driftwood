@@ -9,7 +9,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from driftwood.playback.probe import MediaProbe
+from driftwood.playback.process import AUDIO_DECODERS
 
+PLAYABLE_SUFFIXES = frozenset({".mkv", ".mp4", ".m4v"})
+"""Files playback opens at all; anything else is never handed to ffmpeg."""
 _EIGHT_BIT_420 = {"yuv420p", "yuvj420p"}
 _TEN_BIT_420 = {"yuv420p10le"}
 _DIRECT_AUDIO = {"aac", "mp3"}
@@ -62,6 +65,11 @@ def video_problem(stream: dict[str, Any], capabilities: ClientCapabilities) -> s
         return f"HEVC video in {pix_fmt or 'an unknown pixel format'} can't be decoded by browsers."
     name = str(codec or "unknown").upper()
     return f"{name} video isn't supported; H.264 and HEVC are."
+
+
+def can_decode_audio(stream: dict[str, Any]) -> bool:
+    """Whether ffmpeg may decode (or copy) this audio track: see `process.AUDIO_DECODERS`."""
+    return stream.get("codec_name") in AUDIO_DECODERS
 
 
 def audio_output(stream: dict[str, Any]) -> AudioOutput:

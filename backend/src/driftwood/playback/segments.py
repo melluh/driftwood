@@ -26,7 +26,7 @@ from pathlib import Path
 
 from driftwood.playback.errors import PlaybackError
 from driftwood.playback.policy import AudioOutput
-from driftwood.playback.process import CHILD_OPTIONS
+from driftwood.playback.process import input_args, spawn
 
 log = logging.getLogger(__name__)
 
@@ -103,6 +103,8 @@ class SegmentPlan:
 class SegmentSource:
     ffmpeg: str
     path: Path
+    demuxer: str
+    """The one ffprobe recognised the file as: see `MediaProbe.demuxer`."""
     video_index: int
     audio_index: int | None
     audio: AudioOutput | None
@@ -217,8 +219,7 @@ class SegmentJob:
             # Keep audio from the keyframe on: an accurate seek would start it
             # 0.25 s late and leave a gap at every restart.
             "-noaccurate_seek",
-            "-i",
-            str(source.path),
+            *input_args(source.path, source.demuxer),
             "-map",
             f"0:{source.video_index}",
             "-c:v",
@@ -271,16 +272,7 @@ class SegmentJob:
         self._error = None
         self._run_start = self._next = index
         self._paused = False
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *self.command(index),
-                stdin=asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                **CHILD_OPTIONS,
-            )
-        except OSError as exc:
-            raise PlaybackError(503, f"Could not run ffmpeg: {exc}") from exc
+        process = await spawn(self.command(index), stdout=asyncio.subprocess.PIPE)
         self._process = process
         task = asyncio.create_task(self._watch(process), name=f"segments-{self.directory.name}")
         self._tasks.add(task)

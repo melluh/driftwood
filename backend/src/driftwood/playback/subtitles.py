@@ -13,11 +13,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from driftwood.playback.process import input_args
+
 TEXT_CODECS = {"subrip", "webvtt", "mov_text", "text"}
 ASS_CODECS = {"ass", "ssa"}
 PGS_CODECS = {"hdmv_pgs_subtitle"}
 
 _SIDECAR_FORMATS = {".srt": "subrip", ".vtt": "webvtt", ".ass": "ass", ".ssa": "ssa", ".sup": "pgs"}
+_SIDECAR_DEMUXERS = {"subrip": "srt", "webvtt": "webvtt", "ass": "ass", "ssa": "ass"}
+"""How ffmpeg reads a text sidecar: by its extension, never by guessing from its content."""
+MAX_SIDECARS = 64
+_MAX_TEXT_SIDECAR_BYTES = 10 * 1024**2
+"""A feature film's SRT is about 100 KB; ASS with heavy typesetting a few MB."""
+_MAX_PGS_SIDECAR_BYTES = 256 * 1024**2
 _HEARING_IMPAIRED = {"sdh", "hi", "cc"}
 _LANGUAGE_NAMES = {
     "english": "eng",
@@ -133,8 +141,18 @@ def _describe_sidecar(path: Path, video_stem: str) -> dict[str, Any]:
     }
 
 
+def _small_enough(path: Path) -> bool:
+    limit = _MAX_PGS_SIDECAR_BYTES if path.suffix.lower() == ".sup" else _MAX_TEXT_SIDECAR_BYTES
+    try:
+        return path.stat().st_size <= limit
+    except OSError:
+        return False
+
+
 def sidecar_tracks(video: Path, first_id: int) -> list[SubtitleTrack]:
-    """Subtitle files named after the video: `Movie.srt`, `Movie.eng.srt`, `Movie.en.sdh.srt`."""
+    """Subtitle files named after the video: `Movie.srt`, `Movie.eng.srt`, `Movie.en.sdh.srt`.
+
+    At most `MAX_SIDECARS` of them, each of a size real subtitles have."""
     prefix = video.stem + "."
     try:
         candidates = sorted(
@@ -144,9 +162,10 @@ def sidecar_tracks(video: Path, first_id: int) -> list[SubtitleTrack]:
                 if entry.name.startswith(prefix)
                 and entry.suffix.lower() in _SIDECAR_FORMATS
                 and entry.is_file()
+                and _small_enough(entry)
             ),
             key=lambda entry: entry.name.casefold(),
-        )
+        )[:MAX_SIDECARS]
     except OSError:
         return []
     tracks = []
@@ -223,6 +242,7 @@ def sidecar_commands(ffmpeg: str, track: SubtitleTrack, directory: Path) -> list
     return [
         [
             *(ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y"),
-            *("-i", str(source), "-c:s", "webvtt", str(directory / f"{track.id}.vtt")),
+            *input_args(source, _SIDECAR_DEMUXERS[track.codec]),
+            *("-c:s", "webvtt", str(directory / f"{track.id}.vtt")),
         ]
     ]

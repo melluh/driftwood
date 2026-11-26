@@ -14,18 +14,28 @@ import pytest
 from driftwood.config import LibraryRoot, LibrarySettings, PlaybackSettings
 from driftwood.db import Database
 from driftwood.library.service import LibraryService
+from driftwood.playback import probe as probe_module
+from driftwood.playback import trickplay_generator
+from driftwood.playback.errors import PlaybackError
 from driftwood.playback.mkv import read_keyframes
 from driftwood.playback.policy import (
     ClientCapabilities,
     audio_output,
+    can_decode_audio,
     can_play_directly,
     video_problem,
 )
 from driftwood.playback.probe import MediaProbe, find_keyframes, probe_file
+from driftwood.playback.process import spawn
 from driftwood.playback.router import router as playback_router
 from driftwood.playback.segments import SegmentJob, SegmentPlan, SegmentSource
 from driftwood.playback.service import PlaybackService
-from driftwood.playback.subtitles import embedded_command, embedded_tracks
+from driftwood.playback.subtitles import (
+    MAX_SIDECARS,
+    embedded_command,
+    embedded_tracks,
+    sidecar_tracks,
+)
 from driftwood.playback.trickplay import MARKER, find_trickplay, jpeg_size
 from driftwood.playback.trickplay_generator import (
     Layout,
@@ -234,10 +244,10 @@ def test_video_problem(stream, capabilities, playable) -> None:
 
 
 @needs_ffmpeg
-async def test_matroska_cues_give_the_same_keyframes_as_a_packet_scan(media) -> None:
+async def test_matroska_cues_give_the_same_keyframes_as_a_packet_scan(media, monkeypatch) -> None:
     probe = await probe_file("ffprobe", media["mkv"])
     from_cues = read_keyframes(media["mkv"])
-    probe.format_name = "mov"  # forces the packet scan
+    monkeypatch.setattr(probe_module, "read_keyframes", lambda _path: None)  # forces the scan
     scanned = await find_keyframes("ffprobe", media["mkv"], probe)
 
     assert from_cues == pytest.approx(scanned, abs=0.002)
@@ -259,8 +269,9 @@ async def _job(
     audio = probe.of_type("audio")[0]
     video = probe.video
     assert video is not None
+    assert probe.demuxer is not None
     source = SegmentSource(
-        "ffmpeg", media["mkv"], video["index"], audio["index"], audio_output(audio)
+        "ffmpeg", media["mkv"], probe.demuxer, video["index"], audio["index"], audio_output(audio)
     )
     return SegmentJob(source, plan, tmp_path / "job", lead=lead, keep_behind=1), probe
 
@@ -375,7 +386,13 @@ async def test_mkv_plays_as_hls_with_every_audio_and_subtitle_track(client) -> N
     assert "A sign" in (await client.get(ass["url"])).text
     assert "A sign" in (await client.get(ass["text_url"])).text
     assert len(session["fonts"]) == 1
-    assert (await client.get(session["fonts"][0])).content == b"not really a font"
+    font = await client.get(session["fonts"][0])
+    assert font.content == b"not really a font"
+    # Typed by its name, not by the mimetype the file claims (application/x-truetype-font).
+    assert font.headers["content-type"] == "font/ttf"
+    for response in (font, segment, playlist):
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["content-security-policy"].startswith("sandbox")
 
     # Sidecar files, sorted by name after the embedded tracks.
     assert all(track["external"] for track in (broken, sdh, picture, dutch))
@@ -386,8 +403,8 @@ async def test_mkv_plays_as_hls_with_every_audio_and_subtitle_track(client) -> N
     assert (picture["language"], picture["format"]) == ("ger", "pgs")
     assert picture["url"].endswith(".sup")
     assert (await client.get(picture["url"])).content == b"PG fake picture subtitles"
-    # A broken file loses only its own track.
-    assert (await client.get(broken["url"])).status_code == 502
+    # A broken file loses only its own track: read as SRT, it holds no cues.
+    assert (await client.get(broken["url"])).text.strip() == "WEBVTT"
 
     trickplay = session["trickplay"]
     assert {key: trickplay[key] for key in ("columns", "rows", "width", "height", "count")} == {
@@ -460,9 +477,9 @@ def test_paused_ffmpeg_dies_with_a_crashed_server(tmp_path: Path) -> None:
     script = tmp_path / "crash.py"
     script.write_text(
         "import asyncio, os, signal\n"
-        "from driftwood.playback.process import CHILD_OPTIONS\n"
+        "from driftwood.playback.process import spawn\n"
         "async def main():\n"
-        "    child = await asyncio.create_subprocess_exec('sleep', '60', **CHILD_OPTIONS)\n"
+        "    child = await spawn(['sleep', '60'])\n"
         "    os.kill(child.pid, signal.SIGSTOP)\n"
         "    print(child.pid, flush=True)\n"
         "    os.kill(os.getpid(), signal.SIGKILL)\n"
@@ -494,6 +511,7 @@ def test_sheets_from_the_viewers_position_onwards_go_first() -> None:
         video=Path("film.mkv"),
         directory=Path("film.trickplay"),
         layout=layout,
+        demuxer="matroska",
         video_index=0,
         transfer=None,
         stamp={},
@@ -641,3 +659,71 @@ async def test_a_download_and_a_viewer_asking_at_once_share_one_job(media, tmp_p
         assert find_trickplay(video, 45, 2) is not None
     finally:
         await generator.shutdown()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="resource limits are applied on Linux")
+async def test_ffmpeg_gets_a_bare_environment_and_resource_limits(monkeypatch) -> None:
+    monkeypatch.setenv("DRIFTWOOD_INDEXERS__TORRENTLEECH__PASSWORD", "hunter2")
+    process = await spawn(
+        ["sh", "-c", "env; cat /proc/self/limits"], stdout=asyncio.subprocess.PIPE
+    )
+    stdout, _ = await process.communicate()
+    output = stdout.decode()
+    assert "hunter2" not in output
+    assert "PATH=" in output
+    limits = {line[:26].strip(): line[26:].split() for line in output.splitlines()[1:]}
+    assert limits["Max core file size"][:2] == ["0", "0"]
+    assert limits["Max data size"][0] == str(4 * 1024**3)
+    assert limits["Max file size"][0] == str(4 * 1024**3)
+
+
+@needs_ffmpeg
+async def test_only_matroska_and_mp4_files_are_read(tmp_path: Path) -> None:
+    # Named .mkv, but a transport stream: read by content, it would reach the mpegts demuxer.
+    disguised = tmp_path / "Movie.mkv"
+    _ffmpeg("-f", "lavfi", "-i", "testsrc2=d=1:s=64x36", "-c:v", "libx264", "-f", "mpegts",
+            str(disguised))  # fmt: skip
+    with pytest.raises(PlaybackError) as error:
+        await probe_file("ffprobe", disguised)
+    assert error.value.status_code == 422
+    # An HLS playlist pointing elsewhere is no media file either.
+    playlist = tmp_path / "Playlist.mkv"
+    playlist.write_text("#EXTM3U\n#EXTINF:10,\nhttp://127.0.0.1:9/a.ts\n#EXT-X-ENDLIST\n")
+    with pytest.raises(PlaybackError):
+        await probe_file("ffprobe", playlist)
+
+
+def test_audio_ffmpeg_may_not_decode_is_left_out() -> None:
+    assert can_decode_audio({"codec_name": "dts"})
+    assert can_decode_audio({"codec_name": "aac"})
+    assert not can_decode_audio({"codec_name": "cook"})
+    assert not can_decode_audio({})
+
+
+def test_sidecars_are_capped_in_number_and_size(tmp_path: Path) -> None:
+    video = tmp_path / "Movie.mkv"
+    video.touch()
+    with (tmp_path / "Movie.huge.srt").open("wb") as huge:
+        huge.truncate(11 * 1024**2)
+    (tmp_path / "Movie.en.srt").write_text("1\n00:00:01,000 --> 00:00:02,000\nHi\n")
+    assert [track.language for track in sidecar_tracks(video, 0)] == ["en"]
+
+    for index in range(MAX_SIDECARS + 10):
+        (tmp_path / f"Movie.{index:03d}.srt").write_text("")
+    assert len(sidecar_tracks(video, 0)) == MAX_SIDECARS
+
+
+async def test_no_thumbnails_are_made_for_files_that_cant_play(monkeypatch, tmp_path) -> None:
+    async def probe_file(*_args):
+        raise AssertionError("ffprobe ran on a file playback never opens")
+
+    monkeypatch.setattr(trickplay_generator, "probe_file", probe_file)
+    video = tmp_path / "Movie.avi"
+    video.write_bytes(b"RIFF")
+    generator = TrickplayGenerator(PlaybackSettings())
+    try:
+        await generator._request(video, Priority.imported)
+    finally:
+        await generator.shutdown()
+    assert generator.job(video) is None
+    assert not (tmp_path / "Movie.trickplay").exists()
