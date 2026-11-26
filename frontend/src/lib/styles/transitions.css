@@ -1,6 +1,6 @@
 /*
  * View transition styles. See #lib/transitions/media-expand.ts for how the
- * media-expand transition is started and what sets the --expand-* insets.
+ * media-expand transition is started and what sets the --expand-* insets and radius.
  */
 
 /* The header stays put across page transitions instead of being revealed */
@@ -31,7 +31,7 @@
 	from {
 		clip-path: inset(
 			var(--expand-top) var(--expand-right) var(--expand-bottom) var(--expand-left) round
-				var(--radius-md)
+				var(--expand-radius, var(--radius-md))
 		);
 		opacity: 0;
 	}

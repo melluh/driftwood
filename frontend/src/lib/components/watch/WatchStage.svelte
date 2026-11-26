@@ -14,6 +14,7 @@
 		detail,
 		backdropPath,
 		onclose,
+		immersive = false,
 		children
 	}: {
 		title: string;
@@ -22,6 +23,8 @@
 		detail?: string | null;
 		backdropPath: string | null | undefined;
 		onclose: () => void;
+		/** The content (a player) fills the stage and brings its own title and close button. */
+		immersive?: boolean;
 		children: Snippet;
 	} = $props();
 
@@ -32,19 +35,29 @@
 
 <svelte:window {onkeydown} />
 
-<div class="stage" role="dialog" aria-modal="true" aria-labelledby="watch-title">
-	<FadedBackdrop path={backdropPath} opacity={0.28} eager />
-	<header>
-		<h2 id="watch-title">
-			<span class="name">{title}</span>
-			{#if year}<span class="muted">({year})</span>{/if}
-			{#if detail}<span class="muted">· {detail}</span>{/if}
-		</h2>
-		<IconButton icon="close" label="Close (Esc)" size="lg" onclick={onclose} />
-	</header>
-	<div class="content">
+<div
+	class="stage"
+	role="dialog"
+	aria-modal="true"
+	aria-labelledby={immersive ? undefined : 'watch-title'}
+	aria-label={immersive ? title : undefined}
+>
+	{#if immersive}
 		{@render children()}
-	</div>
+	{:else}
+		<FadedBackdrop path={backdropPath} opacity={0.28} eager />
+		<header>
+			<h2 id="watch-title">
+				<span class="name">{title}</span>
+				{#if year}<span class="muted">({year})</span>{/if}
+				{#if detail}<span class="muted">· {detail}</span>{/if}
+			</h2>
+			<IconButton icon="close" label="Close (Esc)" size="lg" onclick={onclose} />
+		</header>
+		<div class="content">
+			{@render children()}
+		</div>
+	{/if}
 </div>
 
 <style>

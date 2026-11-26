@@ -31,6 +31,8 @@ from driftwood.media.service import MediaService
 from driftwood.media.watch import WatchService
 from driftwood.my_list.router import router as my_list_router
 from driftwood.my_list.service import MyListService
+from driftwood.playback.router import router as playback_router
+from driftwood.playback.service import PlaybackService
 from driftwood.titles.store import TitleIndexStore
 from driftwood.tmdb.client import TmdbClient
 
@@ -66,6 +68,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.database = database
     library_service = LibraryService(settings.library, database)
     app.state.library_service = library_service
+    playback_service = PlaybackService(settings.playback, settings.library)
+    await playback_service.start()
+    app.state.playback_service = playback_service
     for root in settings.library.roots:
         if not root.path.exists():
             log.warning("Library root %s does not exist: %s", root.name, root.path)
@@ -100,6 +105,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             with contextlib.suppress(asyncio.CancelledError):
                 await library_task
             await library_service.shutdown()
+            await playback_service.shutdown()
             await indexers.aclose()
             await database.dispose()
 
@@ -127,3 +133,4 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(media_router, prefix="/api", dependencies=[Depends(require_user)])
 app.include_router(my_list_router, prefix="/api", dependencies=[Depends(require_user)])
 app.include_router(library_router, prefix="/api", dependencies=[Depends(require_user)])
+app.include_router(playback_router, prefix="/api", dependencies=[Depends(require_user)])

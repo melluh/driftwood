@@ -17,6 +17,10 @@ export interface ExpandOptions {
 	 * it stays visible until the page grows over it.
 	 */
 	onleave?: () => void;
+	/** Element whose bounds the page grows out of, when not the link itself. */
+	bounds?: HTMLElement;
+	/** Whether the starting shape has the card's rounded corners (default true). */
+	rounded?: boolean;
 }
 
 interface Origin extends ExpandOptions {
@@ -50,7 +54,8 @@ export function setupMediaExpandTransition(): void {
 		}
 
 		const root = document.documentElement;
-		setExpandOrigin(root, origin.link.getBoundingClientRect());
+		setExpandOrigin(root, (origin.bounds ?? origin.link).getBoundingClientRect());
+		if (origin.rounded === false) root.style.setProperty('--expand-radius', '0px');
 		root.dataset.transition = 'media-expand';
 
 		return new Promise<void>((startNavigation) => {
@@ -68,6 +73,7 @@ export function setupMediaExpandTransition(): void {
 				.finally(() => {
 					delete root.dataset.transition;
 					for (const side of SIDES) root.style.removeProperty(`--expand-${side}`);
+					root.style.removeProperty('--expand-radius');
 				});
 		});
 	});

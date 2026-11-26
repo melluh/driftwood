@@ -149,6 +149,18 @@ DRIFTWOOD_LIBRARY__ROOTS='[{"name":"movies","path":"/srv/movies","kind":"movies"
 
 Include a TMDB tag such as `[tmdbid-438631]`, `[tmdbid=438631]`, `[tmdb-438631]`, or `{tmdb-438631}` in the filename or a parent directory. TV filenames also need a season/episode pattern guessit recognises (such as `S01E02`); `Season 01` and `Specials` directories provide a fallback season. The scanner runs at startup and periodically, and a signed-in client can request a scan through `/api/library/scan`.
 
+### Playing from the library
+
+**Watch** plays the library's copy when there is one, and falls back to the release search when there isn't, or when no copy can play in the browser (the search page then says why). Install `ffmpeg` and `ffprobe` on the backend host.
+
+Video is never re-encoded, so a copy plays only when the browser can decode its video: 8-bit H.264 everywhere, HEVC where the browser reports support for it (10-bit HEVC and Dolby Vision profile 5 are checked separately). MP4 files with H.264 and AAC are served as they are, with byte ranges for seeking. Everything else streams as HLS: a complete VOD playlist is built up front from the video's keyframes (read from the Matroska cue index, or a one-off packet scan cached in the database), and segments are copied out on demand, so the full duration is known and seeking anywhere works straight away. Each audio track is its own rendition, copied when it's AAC and encoded to AAC otherwise. ffmpeg runs a minute or so ahead of the player, is paused (SIGSTOP) beyond that, and is stopped when the player closes or stops fetching.
+
+Text subtitles (SRT, ASS, WebVTT, mov_text) are extracted once per file in a single pass and cached; ASS tracks are drawn with their styling and embedded fonts by JASSUB, with a plain-text fallback. Image-based subtitles (PGS, VobSub) aren't shown, since that would need re-encoding the video.
+
+Seek-bar thumbnails come from trickplay images Jellyfin already made, when it was set to save them next to the media (`<video name>.trickplay/320 - 10x10/0.jpg`, ...). Jellyfin doesn't record the interval on disk, so Driftwood assumes its default of 10 seconds (`DRIFTWOOD_PLAYBACK__TRICKPLAY_INTERVAL_SECONDS`) and ignores sheets whose count doesn't fit the video's duration at that interval.
+
+Segments and extracted subtitles live in `DRIFTWOOD_PLAYBACK__DIRECTORY` (default: `driftwood-playback` in the system temp directory). Budget a few hundred MB per active stream (more for 4K remuxes), and prefer a disk-backed directory if `/tmp` is a RAM-backed tmpfs.
+
 ## Development
 
 ```sh

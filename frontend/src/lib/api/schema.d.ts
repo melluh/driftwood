@@ -339,6 +339,147 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/playback': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Start Playback
+		 * @description Open a session for the best version of a title this browser can play.
+		 *
+		 *     Returns no session, but the versions and why each can't play, when none can.
+		 */
+		post: operations['start_playback_api_playback_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/playback/{session_id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/** Stop Playback */
+		delete: operations['stop_playback_api_playback__session_id__delete'];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/playback/{session_id}/file': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Direct File */
+		get: operations['direct_file_api_playback__session_id__file_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/playback/{session_id}/hls/{rendition}/index.m3u8': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Playlist */
+		get: operations['playlist_api_playback__session_id__hls__rendition__index_m3u8_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/playback/{session_id}/hls/{rendition}/{index}.ts': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Segment */
+		get: operations['segment_api_playback__session_id__hls__rendition___index__ts_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/playback/{session_id}/subtitles/{track}.{kind}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Subtitle */
+		get: operations['subtitle_api_playback__session_id__subtitles__track___kind__get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/playback/{session_id}/trickplay/{index}.jpg': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Trickplay Sheet */
+		get: operations['trickplay_sheet_api_playback__session_id__trickplay__index__jpg_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/playback/{session_id}/fonts/{index}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Font */
+		get: operations['font_api_playback__session_id__fonts__index__get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -543,6 +684,163 @@ export interface components {
 		MyListStatus: {
 			/** In List */
 			in_list: boolean;
+		};
+		/** PlaybackAudioTrack */
+		PlaybackAudioTrack: {
+			/** Id */
+			id: number;
+			/** Language */
+			language: string | null;
+			/** Title */
+			title: string | null;
+			/** Codec */
+			codec: string;
+			/** Channels */
+			channels: number | null;
+			/**
+			 * Default
+			 * @default false
+			 */
+			default: boolean;
+			/** Url */
+			url: string;
+		};
+		/**
+		 * PlaybackCapabilities
+		 * @description What the browser reported it can decode (`MediaSource.isTypeSupported`).
+		 */
+		PlaybackCapabilities: {
+			/**
+			 * Hevc
+			 * @default false
+			 */
+			hevc: boolean;
+			/**
+			 * Hevc Main10
+			 * @default false
+			 */
+			hevc_main10: boolean;
+		};
+		/** PlaybackOffer */
+		PlaybackOffer: {
+			session: components['schemas']['PlaybackSession'] | null;
+			/** Versions */
+			versions: components['schemas']['PlaybackVersion'][];
+			/** Problem */
+			problem: string | null;
+		};
+		/** PlaybackRequest */
+		PlaybackRequest: {
+			media_type: components['schemas']['MediaType'];
+			/** Media Id */
+			media_id: number;
+			/** Season */
+			season?: number | null;
+			/** Episode */
+			episode?: number | null;
+			/** File Id */
+			file_id?: number | null;
+			capabilities?: components['schemas']['PlaybackCapabilities'];
+		};
+		/** PlaybackSession */
+		PlaybackSession: {
+			/** Id */
+			id: string;
+			/**
+			 * Mode
+			 * @enum {string}
+			 */
+			mode: 'direct' | 'hls';
+			/** Duration */
+			duration: number;
+			/** Audio */
+			audio: components['schemas']['PlaybackAudioTrack'][];
+			/** Url */
+			url: string;
+			/** Subtitles */
+			subtitles: components['schemas']['PlaybackSubtitleTrack'][];
+			/** Fonts */
+			fonts: string[];
+			trickplay: components['schemas']['PlaybackTrickplay'] | null;
+		};
+		/** PlaybackSubtitleTrack */
+		PlaybackSubtitleTrack: {
+			/** Id */
+			id: number;
+			/** Language */
+			language: string | null;
+			/** Title */
+			title: string | null;
+			/**
+			 * Forced
+			 * @default false
+			 */
+			forced: boolean;
+			/**
+			 * Hearing Impaired
+			 * @default false
+			 */
+			hearing_impaired: boolean;
+			/**
+			 * External
+			 * @default false
+			 */
+			external: boolean;
+			/**
+			 * Format
+			 * @enum {string}
+			 */
+			format: 'webvtt' | 'ass' | 'pgs';
+			/** Url */
+			url: string;
+			/** Text Url */
+			text_url: string | null;
+		};
+		/**
+		 * PlaybackTrickplay
+		 * @description Seek-bar preview thumbnails, tiled left to right, top to bottom on each sheet.
+		 */
+		PlaybackTrickplay: {
+			/** Sheets */
+			sheets: string[];
+			/** Columns */
+			columns: number;
+			/** Rows */
+			rows: number;
+			/** Width */
+			width: number;
+			/** Height */
+			height: number;
+			/** Interval */
+			interval: number;
+			/** Count */
+			count: number;
+		};
+		/** PlaybackVersion */
+		PlaybackVersion: {
+			/** File Id */
+			file_id: number;
+			/** Name */
+			name: string;
+			/** Height */
+			height: number | null;
+			/** Source */
+			source: string | null;
+			/** Video Codec */
+			video_codec: string | null;
+			/** Hdr Flags */
+			hdr_flags: string[];
+			/** Size */
+			size: number;
+			/** Playable */
+			playable: boolean;
+			/** Problem */
+			problem: string | null;
+			/**
+			 * Selected
+			 * @default false
+			 */
+			selected: boolean;
 		};
 		/** RankedRelease */
 		RankedRelease: {
@@ -753,6 +1051,14 @@ export type MediaDetails = components['schemas']['MediaDetails'];
 export type MediaSummary = components['schemas']['MediaSummary'];
 export type MediaType = components['schemas']['MediaType'];
 export type MyListStatus = components['schemas']['MyListStatus'];
+export type PlaybackAudioTrack = components['schemas']['PlaybackAudioTrack'];
+export type PlaybackCapabilities = components['schemas']['PlaybackCapabilities'];
+export type PlaybackOffer = components['schemas']['PlaybackOffer'];
+export type PlaybackRequest = components['schemas']['PlaybackRequest'];
+export type PlaybackSession = components['schemas']['PlaybackSession'];
+export type PlaybackSubtitleTrack = components['schemas']['PlaybackSubtitleTrack'];
+export type PlaybackTrickplay = components['schemas']['PlaybackTrickplay'];
+export type PlaybackVersion = components['schemas']['PlaybackVersion'];
 export type RankedRelease = components['schemas']['RankedRelease'];
 export type Rejected = components['schemas']['Rejected'];
 export type ReleaseAttributes = components['schemas']['ReleaseAttributes'];
@@ -1253,6 +1559,249 @@ export interface operations {
 				content: {
 					'application/json': components['schemas']['LibraryAvailability'];
 				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	start_playback_api_playback_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['PlaybackRequest'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PlaybackOffer'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	stop_playback_api_playback__session_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	direct_file_api_playback__session_id__file_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	playlist_api_playback__session_id__hls__rendition__index_m3u8_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+				rendition: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	segment_api_playback__session_id__hls__rendition___index__ts_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+				rendition: string;
+				index: number;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	subtitle_api_playback__session_id__subtitles__track___kind__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+				track: number;
+				kind: 'vtt' | 'ass' | 'sup';
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	trickplay_sheet_api_playback__session_id__trickplay__index__jpg_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+				index: number;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	font_api_playback__session_id__fonts__index__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+				index: number;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
 			};
 			/** @description Validation Error */
 			422: {

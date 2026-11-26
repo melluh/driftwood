@@ -1,4 +1,5 @@
 import { loadMediaDetails } from '#lib/media/load.ts';
+import { loadAvailability } from '#lib/library/library.ts';
 import type { PageLoad } from './$types';
 
 function positiveInt(value: string | null): number | null {
@@ -7,7 +8,10 @@ function positiveInt(value: string | null): number | null {
 }
 
 export const load: PageLoad = async ({ params, fetch, url }) => {
-	const media = await loadMediaDetails(params, fetch);
+	const [media, availability] = await Promise.all([
+		loadMediaDetails(params, fetch),
+		loadAvailability({ media_type: params.type, id: params.id }, fetch)
+	]);
 	// Series watch one episode: ?season=&episode=, defaulting to S01E01.
 	const episode =
 		media.media_type === 'tv'
@@ -16,5 +20,5 @@ export const load: PageLoad = async ({ params, fetch, url }) => {
 					episode: positiveInt(url.searchParams.get('episode')) ?? 1
 				}
 			: null;
-	return { media, episode };
+	return { media, episode, availability };
 };

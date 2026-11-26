@@ -1,3 +1,4 @@
+import tempfile
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -118,6 +119,30 @@ class LibrarySettings(BaseModel):
         return self
 
 
+class PlaybackSettings(BaseModel):
+    directory: Path = Field(
+        default_factory=lambda: Path(tempfile.gettempdir()) / "driftwood-playback"
+    )
+    """Scratch space for HLS segments and extracted subtitles. A few hundred MB
+    per active stream; prefer a disk over a RAM-backed /tmp for 4K remuxes."""
+    ffmpeg: str = "ffmpeg"
+    ffprobe: str = "ffprobe"
+    segment_seconds: float = Field(default=6, ge=2, le=30)
+    """Target HLS segment length; segments start on the file's own keyframes."""
+    lead_segments: int = Field(default=10, ge=2)
+    """How far ffmpeg runs ahead of the player before it's paused."""
+    keep_behind_segments: int = Field(default=5, ge=0)
+    """Segments behind the player kept on disk for short rewinds."""
+    stream_idle_seconds: int = Field(default=120, ge=10)
+    """An audio rendition nobody fetched from for this long is stopped and deleted."""
+    session_idle_seconds: int = Field(default=6 * 60 * 60, ge=60)
+    """A playback session is forgotten after this long without requests."""
+    trickplay_interval_seconds: float = Field(default=10, gt=0)
+    """Seconds between the seek-bar thumbnails Jellyfin saved next to videos
+    (Jellyfin's "Interval" setting, 10 s by default). Thumbnails whose sheet
+    count doesn't fit this interval are ignored."""
+
+
 class AuthSettings(BaseModel):
     issuer_url: str = ""
     """OpenID Connect issuer, e.g. `https://accounts.google.com`. Its
@@ -169,6 +194,7 @@ class Settings(BaseSettings):
     database: DatabaseSettings = DatabaseSettings()
     auth: AuthSettings = AuthSettings()
     library: LibrarySettings = LibrarySettings()
+    playback: PlaybackSettings = PlaybackSettings()
 
 
 @lru_cache
