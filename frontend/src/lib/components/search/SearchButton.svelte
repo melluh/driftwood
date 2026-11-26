@@ -24,4 +24,4 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<IconButton icon="search" label="Search (/)" {onclick} />
+<IconButton icon="search" label="Search (/)" ghost {onclick} />

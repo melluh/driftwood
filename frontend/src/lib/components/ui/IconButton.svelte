@@ -7,15 +7,18 @@
 		icon,
 		label,
 		size = 'md',
+		ghost = false,
 		...rest
 	}: HTMLButtonAttributes & {
 		icon: IconName;
 		label: string;
 		size?: 'md' | 'lg';
+		/** Just the icon: no background or border. */
+		ghost?: boolean;
 	} = $props();
 </script>
 
-<button type="button" class="icon-button {size}" aria-label={label} title={label} {...rest}>
+<button type="button" class="icon-button {size}" class:ghost aria-label={label} title={label} {...rest}>
 	<Icon name={icon} />
 </button>
 
@@ -38,6 +41,20 @@
 		background: var(--color-surface-hover);
 		color: var(--color-text);
 		border-color: var(--color-accent-soft);
+	}
+
+	.ghost,
+	.ghost:hover {
+		background: transparent;
+		border-color: transparent;
+	}
+
+	.ghost {
+		color: var(--color-text);
+	}
+
+	.ghost:hover {
+		color: var(--color-accent-strong);
 	}
 
 	.md {

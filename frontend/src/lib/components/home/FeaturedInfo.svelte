@@ -25,11 +25,13 @@
 </script>
 
 <div class="info">
-	<MediaMeta {media} />
-	<h2>{media.title}</h2>
-	{#if media.overview}
-		<p class="overview">{media.overview}</p>
-	{/if}
+	<div class="text">
+		<MediaMeta {media} />
+		<h2>{media.title}</h2>
+		{#if media.overview}
+			<p class="overview">{media.overview}</p>
+		{/if}
+	</div>
 	<div class="actions">
 		<LinkButton href={mediaHref(media.media_type, media.id)} icon="info" onclick={handleClick}>
 			More info
@@ -39,7 +41,15 @@
 </div>
 
 <style>
+	/* Text on the left, actions pinned to the right; stacked on narrow screens */
 	.info {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--space-4);
+	}
+
+	.text {
 		display: flex;
 		flex-direction: column;
 		align-items: flex-start;
@@ -51,6 +61,20 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--space-3);
+	}
+
+	@media (min-width: 48rem) {
+		.info {
+			flex-direction: row;
+			justify-content: space-between;
+			align-items: flex-end;
+			gap: var(--space-8);
+		}
+
+		.actions {
+			flex-wrap: nowrap;
+			flex-shrink: 0;
+		}
 	}
 
 	h2 {

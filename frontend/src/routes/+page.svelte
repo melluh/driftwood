@@ -31,13 +31,12 @@
 </div>
 
 <style>
-	/* Rows slide up into the hero's faded bottom edge */
 	.rows {
 		position: relative;
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-8);
-		margin-top: calc(-1 * var(--space-4));
+		margin-top: var(--space-6);
 		padding-bottom: var(--space-12);
 	}
 </style>

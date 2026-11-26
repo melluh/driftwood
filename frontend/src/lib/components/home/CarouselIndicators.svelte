@@ -49,10 +49,19 @@
 		padding: 0;
 		border: 0;
 		border-radius: var(--radius-full);
-		background: oklch(from var(--color-text) l c h / 0.25);
+		background: oklch(from var(--color-text) l c h / 0.12);
 		overflow: hidden;
 		cursor: pointer;
-		transition: background var(--duration-fast);
+		/* Long and gentle, in step with the slide's own cross-fade */
+		transition:
+			background 500ms var(--ease-emphasized),
+			width 500ms var(--ease-emphasized);
+	}
+
+	/* The running slide's bar is wider, with a lighter track behind its fill */
+	button[aria-current='true'] {
+		width: 4rem;
+		background: oklch(from var(--color-text) l c h / 0.25);
 	}
 
 	/* Larger hit area than the visible bar */

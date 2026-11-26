@@ -9,11 +9,14 @@
 	let {
 		backdropPath,
 		backdropOpacity = 0.55,
+		backdropFadeMs,
 		tall = false,
 		children
 	}: {
 		backdropPath: string | null | undefined;
 		backdropOpacity?: number;
+		/** Cross-fade duration when the backdrop changes. */
+		backdropFadeMs?: number;
 		/** Taller variant for featured content. */
 		tall?: boolean;
 		children: Snippet;
@@ -21,7 +24,7 @@
 </script>
 
 <section class="hero" class:tall>
-	<FadedBackdrop path={backdropPath} opacity={backdropOpacity} eager />
+	<FadedBackdrop path={backdropPath} opacity={backdropOpacity} fadeMs={backdropFadeMs} eager />
 	<div class="content">
 		{@render children()}
 	</div>
@@ -38,7 +41,7 @@
 	}
 
 	.tall {
-		min-height: min(92vh, 58rem);
+		min-height: min(64vh, 40rem);
 		padding-bottom: var(--space-12);
 	}
 
@@ -57,6 +60,23 @@
 			oklch(from var(--fade-to) l c h / 0.85) 15%,
 			transparent 65%
 		);
+	}
+
+	/* Top scrim: darkens the backdrop behind the header so it stays legible.
+	   Comes after .backdrop in tree order, so it paints over it. */
+	.hero::after {
+		content: '';
+		position: absolute;
+		inset: 0 0 auto;
+		z-index: -1;
+		height: calc(var(--header-height) + var(--space-12));
+		background: linear-gradient(
+			to bottom,
+			oklch(from var(--fade-to) l c h / 0.8),
+			oklch(from var(--fade-to) l c h / 0.45) 50%,
+			transparent
+		);
+		pointer-events: none;
 	}
 
 	.content {

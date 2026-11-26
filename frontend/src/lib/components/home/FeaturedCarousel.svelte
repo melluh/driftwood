@@ -3,7 +3,8 @@
 	cross-fades between slides, and the next slide's backdrop is preloaded.
 -->
 <script lang="ts">
-	import { fade } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
+	import { fade, fly } from 'svelte/transition';
 	import type { MediaSummary } from '#lib/api/client.ts';
 	import { Rotation } from '#lib/home/rotation.svelte.ts';
 	import { isSameMedia } from '#lib/my-list/my-list.ts';
@@ -62,10 +63,20 @@
 		onfocusin={() => rotation.setFocused(true)}
 		onfocusout={handleFocusOut}
 	>
-		<HeroFrame backdropPath={current.backdrop_path} backdropOpacity={0.8} tall>
+		<HeroFrame
+			backdropPath={current.backdrop_path}
+			backdropOpacity={0.8}
+			backdropFadeMs={900}
+			tall
+		>
 			<div class="slide">
 				{#key current}
-					<div class="info" in:fade={{ duration: 500 }}>
+					<!-- The outgoing slide fades out while the next drifts up into place -->
+					<div
+						class="info"
+						in:fly={{ y: 16, duration: 700, delay: 200, easing: cubicOut }}
+						out:fade={{ duration: 300 }}
+					>
 						<FeaturedInfo
 							media={current}
 							inMyList={myList.some((item) => isSameMedia(item, current))}
