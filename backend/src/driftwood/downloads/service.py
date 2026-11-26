@@ -140,7 +140,7 @@ class DownloadService:
                     .order_by(Download.id.desc())
                 )
                 if existing is not None:
-                    return self._status(existing)
+                    return self._status(existing, user_id)
 
             lookup = await self.releases.find(
                 request.media_type, request.media_id, season=season, episode=episode
@@ -199,15 +199,22 @@ class DownloadService:
                 request.media_id,
             )
         self._wake.set()
-        return self._status(row)
+        return self._status(row, user_id)
 
-    async def get(self, download_id: int) -> DownloadStatus | None:
+    async def get(self, download_id: int, *, user_id: int | None) -> DownloadStatus | None:
+        """A download's status as `user_id` sees it (only its owner may cancel it)."""
         async with self.database.sessionmaker() as db:
             row = await db.get(Download, download_id)
-        return self._status(row) if row else None
+        return self._status(row, user_id) if row else None
 
     async def active_for(
-        self, media_type: MediaType, media_id: int, season: int | None, episode: int | None
+        self,
+        media_type: MediaType,
+        media_id: int,
+        season: int | None,
+        episode: int | None,
+        *,
+        user_id: int | None,
     ) -> DownloadStatus | None:
         """The download in progress for a title (or episode), if there is one."""
         query = select(Download).where(
@@ -221,18 +228,20 @@ class DownloadService:
             )
         async with self.database.sessionmaker() as db:
             row = await db.scalar(query.order_by(Download.id.desc()))
-        return self._status(row) if row else None
+        return self._status(row, user_id) if row else None
 
-    async def cancel(self, download_id: int) -> DownloadStatus | None:
-        """Stop a download and delete its data from qBittorrent."""
+    async def cancel(self, download_id: int, *, user_id: int | None) -> DownloadStatus | None:
+        """Stop a download and delete its data from qBittorrent; only its owner may."""
         async with self.database.sessionmaker() as db:
             row = await db.get(Download, download_id)
         if row is None:
             return None
+        if not self._owned_by(row, user_id):
+            raise DownloadError("Only the person who started this download can cancel it", 403)
         if row.state == DownloadState.importing.value:
             raise DownloadError("It's already being added to the library", 409)
         if row.state != DownloadState.downloading.value:
-            return self._status(row)
+            return self._status(row, user_id)
         if self.client is not None:
             # Fresh numbers, not the last tick's: the torrent may have moved on since.
             try:
@@ -251,12 +260,18 @@ class DownloadService:
                 raise DownloadError(str(exc), 502) from exc
         self._live.pop(row.infohash, None)
         await self._set_state(row.id, DownloadState.cancelled)
-        return await self.get(row.id)
+        return await self.get(row.id, user_id=user_id)
 
     def _cancellable(self, info: TorrentInfo) -> bool:
         return info.tracker_share < self.settings.cancel_limit
 
-    def _status(self, row: Download) -> DownloadStatus:
+    @staticmethod
+    def _owned_by(row: Download, user_id: int | None) -> bool:
+        """Downloads are shared (anyone may follow one), but only the user who started
+        one may cancel it. One without an owner (theirs was deleted) is anyone's."""
+        return row.user_id is None or row.user_id == user_id
+
+    def _status(self, row: Download, user_id: int | None) -> DownloadStatus:
         status = DownloadStatus(
             id=row.id,
             state=row.state,  # type: ignore[arg-type]
@@ -285,11 +300,11 @@ class DownloadService:
                 status.eta_seconds = info.eta
                 status.seeds = info.seeds
                 status.peers = info.peers
-                status.can_cancel = self._cancellable(info)
+                status.can_cancel = self._cancellable(info) and self._owned_by(row, user_id)
             else:
                 status.activity = "connecting"
                 # Unknown progress: offer it, and let `cancel` check the real numbers.
-                status.can_cancel = True
+                status.can_cancel = self._owned_by(row, user_id)
             status.error = self._client_error
         return status
 

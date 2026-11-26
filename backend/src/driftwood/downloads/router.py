@@ -48,7 +48,7 @@ async def active_download(
     episode: Annotated[int | None, Query(ge=1)] = None,
 ) -> DownloadStatus | None:
     """The download in progress for a title (series: an episode, default S01E01), or null."""
-    return await service.active_for(media_type, media_id, season, episode)
+    return await service.active_for(media_type, media_id, season, episode, user_id=user.id)
 
 
 @router.get("/{download_id}")
@@ -56,7 +56,7 @@ async def download_status(
     service: DownloadServiceDep, user: UserDep, download_id: DownloadId
 ) -> DownloadStatus:
     """Progress, speed and ETA, refreshed from qBittorrent every couple of seconds."""
-    result = await service.get(download_id)
+    result = await service.get(download_id, user_id=user.id)
     if result is None:
         raise HTTPException(status_code=404, detail="Download not found")
     return result
@@ -66,9 +66,10 @@ async def download_status(
 async def cancel_download(
     service: DownloadServiceDep, user: UserDep, download_id: DownloadId
 ) -> DownloadStatus:
-    """Stop the download and delete what qBittorrent downloaded so far."""
+    """Stop the download and delete what qBittorrent downloaded so far. Only the user who
+    started it may (403 for anyone else)."""
     try:
-        result = await service.cancel(download_id)
+        result = await service.cancel(download_id, user_id=user.id)
     except DownloadError as exc:
         raise _http(exc) from exc
     if result is None:

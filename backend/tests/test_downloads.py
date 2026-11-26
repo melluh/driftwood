@@ -18,6 +18,7 @@ from driftwood.config import (
     QbittorrentSettings,
 )
 from driftwood.db import Database
+from driftwood.db.models import User
 from driftwood.downloads import importer
 from driftwood.downloads.bencode import BencodeError, encode, infohash
 from driftwood.downloads.importer import (
@@ -419,18 +420,18 @@ async def test_download_then_import_into_the_library(tmp_path: Path, database: D
     assert indexers.downloads == 1
 
     await service._tick()
-    status = await service.get(started.id)
+    status = await service.get(started.id, user_id=None)
     assert status is not None and status.activity == "connecting" and status.eta_seconds is None
 
     qbit.torrents[torrent_hash].update(
         state="downloading", progress=0.25, amount_left=1_500_000_000, dlspeed=10_000_000, eta=150
     )
     await service._tick()
-    status = await service.get(started.id)
+    status = await service.get(started.id, user_id=None)
     assert status is not None
     assert (status.activity, status.progress, status.eta_seconds) == ("downloading", 0.25, 150)
     assert status.downloaded == 500_000_000
-    assert await service.active_for(MediaType.movie, 438631, None, None) == status
+    assert await service.active_for(MediaType.movie, 438631, None, None, user_id=None) == status
 
     # Complete: the video and its subtitle are linked into the library.
     content = tmp_path / "torrents" / "driftwood" / "Dune.2021.1080p.WEB-DL.H.264-FLUX"
@@ -445,7 +446,7 @@ async def test_download_then_import_into_the_library(tmp_path: Path, database: D
     await service._tick()
     await next(iter(service._imports.values()))
 
-    status = await service.get(started.id)
+    status = await service.get(started.id, user_id=None)
     assert status is not None
     assert status.state == "completed", status.error
     assert status.file_id is not None and status.progress == 1
@@ -455,7 +456,7 @@ async def test_download_then_import_into_the_library(tmp_path: Path, database: D
     assert (folder / "Dune (2021) [tmdbid-438631] - 1080p WEB-DL H.264-FLUX.en.srt").exists()
     # Seek-bar thumbnails are started for it right away.
     assert trickplay.requested == [video]
-    assert await service.active_for(MediaType.movie, 438631, None, None) is None
+    assert await service.active_for(MediaType.movie, 438631, None, None, user_id=None) is None
 
 
 async def test_a_torrent_removed_from_qbittorrent_fails(tmp_path: Path, database: Database) -> None:
@@ -465,7 +466,7 @@ async def test_a_torrent_removed_from_qbittorrent_fails(tmp_path: Path, database
     started = await service.start(REQUEST, user_id=None)
     qbit.torrents.clear()
     await service._tick()
-    status = await service.get(started.id)
+    status = await service.get(started.id, user_id=None)
     assert status is not None and status.state == "failed"
     assert status.error == "The torrent was removed from qBittorrent"
 
@@ -475,7 +476,37 @@ async def test_cancel_deletes_the_torrent(tmp_path: Path, database: Database) ->
     qbit = FakeQbittorrent(save_path="/downloads")
     service, _ = make_service(tmp_path, database, qbit, torrent)
     started = await service.start(REQUEST, user_id=None)
-    cancelled = await service.cancel(started.id)
+    cancelled = await service.cancel(started.id, user_id=None)
+    assert cancelled is not None and cancelled.state == "cancelled"
+    assert qbit.torrents == {}
+
+
+async def test_only_the_user_who_started_a_download_can_cancel_it(
+    tmp_path: Path, database: Database
+) -> None:
+    torrent = torrent_bytes()
+    torrent_hash = infohash(torrent)
+    qbit = FakeQbittorrent(save_path="/downloads")
+    service, _ = make_service(tmp_path, database, qbit, torrent)
+    async with database.sessionmaker() as db, db.begin():
+        owner = User(issuer="https://idp", subject="a", name="Owner")
+        other = User(issuer="https://idp", subject="b", name="Other")
+        db.add_all([owner, other])
+    started = await service.start(REQUEST, user_id=owner.id)
+    await service._tick()
+
+    # Anyone may follow it, but only its owner is offered (and allowed) to cancel it.
+    seen = await service.get(started.id, user_id=other.id)
+    assert seen is not None and seen.can_cancel is False
+    assert (await service.start(REQUEST, user_id=other.id)).can_cancel is False
+    with pytest.raises(DownloadError) as caught:
+        await service.cancel(started.id, user_id=other.id)
+    assert caught.value.status_code == 403
+    assert torrent_hash in qbit.torrents
+
+    mine = await service.get(started.id, user_id=owner.id)
+    assert mine is not None and mine.can_cancel is True
+    cancelled = await service.cancel(started.id, user_id=owner.id)
     assert cancelled is not None and cancelled.state == "cancelled"
     assert qbit.torrents == {}
 
@@ -513,14 +544,14 @@ async def test_cancelling_is_refused_near_the_hit_and_run_threshold(
         state="downloading", amount_left=1_900_000_000, downloaded=160_000_000
     )
     await service._tick()
-    status = await service.get(started.id)
+    status = await service.get(started.id, user_id=None)
     assert status is not None and status.can_cancel is False
 
     with pytest.raises(DownloadError) as caught:
-        await service.cancel(started.id)
+        await service.cancel(started.id, user_id=None)
     assert caught.value.status_code == 409
     assert torrent_hash in qbit.torrents
-    status = await service.get(started.id)
+    status = await service.get(started.id, user_id=None)
     assert status is not None and status.state == "downloading"
 
 
@@ -533,5 +564,5 @@ async def test_cancelling_checks_fresh_numbers(tmp_path: Path, database: Databas
     await service._tick()  # 0%: cancellable as far as the last tick knows
     qbit.torrents[torrent_hash].update(state="downloading", amount_left=1_000_000_000)
     with pytest.raises(DownloadError):
-        await service.cancel(started.id)
+        await service.cancel(started.id, user_id=None)
     assert torrent_hash in qbit.torrents

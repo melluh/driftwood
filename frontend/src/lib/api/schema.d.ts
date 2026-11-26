@@ -608,7 +608,8 @@ export interface paths {
 		post?: never;
 		/**
 		 * Cancel Download
-		 * @description Stop the download and delete what qBittorrent downloaded so far.
+		 * @description Stop the download and delete what qBittorrent downloaded so far. Only the user who
+		 *     started it may (403 for anyone else).
 		 */
 		delete: operations['cancel_download_api_downloads__download_id__delete'];
 		options?: never;
