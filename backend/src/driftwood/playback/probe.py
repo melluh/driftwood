@@ -10,7 +10,7 @@ from typing import Any
 
 from driftwood.playback.errors import PlaybackError
 from driftwood.playback.mkv import read_keyframes
-from driftwood.playback.process import DEMUXERS, spawn
+from driftwood.playback.process import DEMUXERS, kill, spawn
 
 log = logging.getLogger(__name__)
 
@@ -84,14 +84,12 @@ class MediaProbe:
             return None
 
 
-async def _run(executable: str, args: list[str], timeout: float) -> bytes:
-    process = await spawn([executable, *args], stdout=asyncio.subprocess.PIPE)
+async def _run(executable: str, args: list[str], path: Path, timeout: float) -> bytes:
+    process = await spawn([executable, *args], reads=[path], stdout=asyncio.subprocess.PIPE)
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
     except BaseException:
-        if process.returncode is None:
-            process.kill()
-            await process.wait()
+        await kill(process)
         raise
     if process.returncode:
         detail = stderr.decode(errors="replace").strip().splitlines()
@@ -111,6 +109,7 @@ async def probe_file(ffprobe: str, path: Path) -> MediaProbe:
                 *("-show_format", "-show_streams", "-of", "json"),
                 str(path),
             ],
+            path,
             timeout=60,
         )
     except TimeoutError:
@@ -175,6 +174,7 @@ async def find_keyframes(ffprobe: str, path: Path, probe: MediaProbe) -> list[fl
                 "csv=p=0",
                 str(path),
             ],
+            path,
             timeout=30 * 60,
         )
     except TimeoutError:

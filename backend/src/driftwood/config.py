@@ -154,6 +154,10 @@ class PlaybackSettings(BaseModel):
     per active stream; prefer a disk over a RAM-backed /tmp for 4K remuxes."""
     ffmpeg: str = "ffmpeg"
     ffprobe: str = "ffprobe"
+    sandbox: Literal["auto", "bwrap", "off"] = "auto"
+    """Run ffmpeg and ffprobe in a bubblewrap sandbox: no network, and of the files only
+    the ones each run reads and writes. `auto` does where bwrap can run them (warning
+    otherwise), `bwrap` refuses to play rather than run them unsandboxed, `off` never does."""
     segment_seconds: float = Field(default=6, ge=2, le=30)
     """Target HLS segment length; segments start on the file's own keyframes."""
     lead_segments: int = Field(default=10, ge=2)

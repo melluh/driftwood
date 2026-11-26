@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import sys
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 import httpx
@@ -26,7 +26,7 @@ from driftwood.playback.policy import (
     video_problem,
 )
 from driftwood.playback.probe import MediaProbe, find_keyframes, probe_file
-from driftwood.playback.process import spawn
+from driftwood.playback.process import configure_sandbox, sandbox_command, spawn
 from driftwood.playback.router import router as playback_router
 from driftwood.playback.segments import SegmentJob, SegmentPlan, SegmentSource
 from driftwood.playback.service import PlaybackService
@@ -472,26 +472,116 @@ def test_trickplay_needs_sheets_that_fit_the_interval(tmp_path: Path) -> None:
     assert find_trickplay(tmp_path / "Other.mkv", 5817.7, 10) is None
 
 
+def _group(pgid: int) -> list[int]:
+    """Processes in a process group."""
+    members = []
+    for stat in Path("/proc").glob("[0-9]*/stat"):
+        try:
+            fields = stat.read_text().rsplit(")", 1)[1].split()
+        except OSError:
+            continue
+        if int(fields[2]) == pgid:
+            members.append(int(stat.parent.name))
+    return members
+
+
+@needs_ffmpeg
 @pytest.mark.skipif(sys.platform != "linux", reason="parent death signals are Linux-only")
 def test_paused_ffmpeg_dies_with_a_crashed_server(tmp_path: Path) -> None:
     script = tmp_path / "crash.py"
     script.write_text(
         "import asyncio, os, signal\n"
-        "from driftwood.playback.process import spawn\n"
+        "from driftwood.playback.process import send, spawn\n"
         "async def main():\n"
-        "    child = await spawn(['sleep', '60'])\n"
-        "    os.kill(child.pid, signal.SIGSTOP)\n"
+        "    child = await spawn(['ffmpeg', '-re', '-f', 'lavfi', '-i', 'anullsrc',\n"
+        "                         '-f', 'null', '-'])\n"
+        "    await asyncio.sleep(0.5)\n"
+        "    send(child, signal.SIGSTOP)\n"
         "    print(child.pid, flush=True)\n"
         "    os.kill(os.getpid(), signal.SIGKILL)\n"
         "asyncio.run(main())\n"
     )
     result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
-    pid = int(result.stdout)
+    pgid = int(result.stdout)
+    # The child leads its group; sandboxed, ffmpeg itself is a grandchild in it.
     for _ in range(50):
-        if not Path(f"/proc/{pid}").exists():
+        if not _group(pgid):
             break
         time.sleep(0.05)
-    assert not Path(f"/proc/{pid}").exists()
+    assert not _group(pgid)
+
+
+@pytest.fixture
+def sandbox_mode() -> Iterator[None]:
+    yield
+    configure_sandbox("auto")
+
+
+async def _require_sandbox() -> None:
+    if await sandbox_command(["ffmpeg"]) == ["ffmpeg"]:
+        pytest.skip("ffmpeg can't run sandboxed with bwrap here")
+
+
+@needs_ffmpeg
+async def test_sandboxed_ffmpeg_sees_only_its_own_files(tmp_path: Path, media) -> None:
+    await _require_sandbox()
+    secret = tmp_path / "secret.mkv"
+    shutil.copyfile(media["mkv"], secret)
+    output = tmp_path / "out"
+    output.mkdir()
+
+    async def run(*args: str, reads=(), writes=()) -> int:
+        process = await spawn(["ffmpeg", "-v", "error", "-y", *args], reads=reads, writes=writes)
+        await process.communicate()
+        assert process.returncode is not None
+        return process.returncode
+
+    copy = ["-i", str(secret), "-map", "0:v", "-c", "copy", "-t", "1"]
+    assert await run(*copy, str(output / "a.mkv"), reads=[secret], writes=[output]) == 0
+    assert (output / "a.mkv").is_file()
+    # Not handed to it: no such file.
+    assert await run(*copy, str(output / "b.mkv"), writes=[output]) != 0
+    # Nowhere to write but its directory: elsewhere it fails, or (under /tmp, a
+    # tmpfs of its own) writes what vanishes with the sandbox.
+    await run(*copy, str(tmp_path / "c.mkv"), reads=[secret], writes=[output])
+    assert not (output / "b.mkv").exists() and not (tmp_path / "c.mkv").exists()
+
+
+@needs_ffmpeg
+async def test_sandboxed_ffmpeg_has_no_network() -> None:
+    await _require_sandbox()
+    connections = []
+
+    async def accept(_reader, writer) -> None:
+        connections.append(1)
+        writer.close()
+
+    server = await asyncio.start_server(accept, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    try:
+        process = await spawn(
+            ["ffmpeg", "-v", "error", "-i", f"http://127.0.0.1:{port}/a.mkv", "-f", "null", "-"]
+        )
+        await process.communicate()
+    finally:
+        server.close()
+        await server.wait_closed()
+    assert process.returncode != 0
+    assert not connections
+
+
+async def test_required_sandbox_refuses_to_run_without_bwrap(
+    monkeypatch, tmp_path, sandbox_mode
+) -> None:
+    monkeypatch.setenv("PATH", str(tmp_path))  # neither bwrap nor ffmpeg on it
+    configure_sandbox("bwrap")
+    with pytest.raises(PlaybackError) as error:
+        await spawn(["ffmpeg", "-version"])
+    assert error.value.status_code == 503
+    configure_sandbox("auto")
+    assert await sandbox_command(["ffmpeg"]) == ["ffmpeg"]
+    configure_sandbox("off")
+    assert await sandbox_command(["ffmpeg"]) == ["ffmpeg"]
 
 
 def test_thumbnails_keep_the_display_aspect_ratio() -> None:

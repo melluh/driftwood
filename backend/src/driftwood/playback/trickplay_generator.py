@@ -40,7 +40,7 @@ from driftwood.config import PlaybackSettings
 from driftwood.playback.errors import PlaybackError
 from driftwood.playback.policy import PLAYABLE_SUFFIXES
 from driftwood.playback.probe import MediaProbe, probe_file
-from driftwood.playback.process import VIDEO_DECODERS, input_args, spawn
+from driftwood.playback.process import VIDEO_DECODERS, input_args, kill, spawn
 from driftwood.playback.trickplay import (
     MARKER,
     Trickplay,
@@ -433,7 +433,7 @@ class TrickplayGenerator:
             "1",
             str(partial),
         ]
-        process = await spawn(command, background=True)
+        process = await spawn(command, reads=[job.video], writes=[job.directory], background=True)
         try:
             _, stderr = await asyncio.wait_for(process.communicate(), _SHEET_TIMEOUT_SECONDS)
         except TimeoutError:
@@ -469,8 +469,7 @@ class TrickplayGenerator:
         try:
             stdout, _ = await asyncio.wait_for(process.communicate(), timeout=30)
         except TimeoutError:
-            process.kill()
-            await process.wait()
+            await kill(process)
             return False
         names = {line.split()[1] for line in stdout.decode().splitlines() if len(line.split()) > 2}
         if not {"zscale", "tonemap"} <= names:
@@ -480,9 +479,7 @@ class TrickplayGenerator:
 
 
 async def _abandon(process: asyncio.subprocess.Process, partial: Path) -> None:
-    if process.returncode is None:
-        process.kill()
-        await process.wait()
+    await kill(process)
     with contextlib.suppress(OSError):
         partial.unlink(missing_ok=True)
 

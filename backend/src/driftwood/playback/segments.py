@@ -12,11 +12,9 @@ there. Segments far behind the player are deleted, and come back on demand.
 """
 
 import asyncio
-import contextlib
 import itertools
 import logging
 import math
-import os
 import shutil
 import signal
 import time
@@ -26,7 +24,7 @@ from pathlib import Path
 
 from driftwood.playback.errors import PlaybackError
 from driftwood.playback.policy import AudioOutput
-from driftwood.playback.process import input_args, spawn
+from driftwood.playback.process import input_args, kill, send, spawn
 
 log = logging.getLogger(__name__)
 
@@ -187,14 +185,13 @@ class SegmentJob:
         if not _CAN_PAUSE or process is None or process.returncode is not None:
             return
         ahead = self._next - self._requested
-        with contextlib.suppress(ProcessLookupError):
-            if self._paused and ahead < self.lead:
-                os.kill(process.pid, signal.SIGCONT)
-                self._paused = False
-            elif not self._paused and ahead >= self.lead and self._next < len(self.plan):
-                # (Past the last segment ffmpeg is only finishing up; let it exit.)
-                os.kill(process.pid, signal.SIGSTOP)
-                self._paused = True
+        if self._paused and ahead < self.lead:
+            send(process, signal.SIGCONT)
+            self._paused = False
+        elif not self._paused and ahead >= self.lead and self._next < len(self.plan):
+            # (Past the last segment ffmpeg is only finishing up; let it exit.)
+            send(process, signal.SIGSTOP)
+            self._paused = True
 
     def _prune(self) -> None:
         low = self._requested - self.keep_behind
@@ -272,7 +269,12 @@ class SegmentJob:
         self._error = None
         self._run_start = self._next = index
         self._paused = False
-        process = await spawn(self.command(index), stdout=asyncio.subprocess.PIPE)
+        process = await spawn(
+            self.command(index),
+            reads=[self.source.path],
+            writes=[self.directory],
+            stdout=asyncio.subprocess.PIPE,
+        )
         self._process = process
         task = asyncio.create_task(self._watch(process), name=f"segments-{self.directory.name}")
         self._tasks.add(task)
@@ -321,12 +323,9 @@ class SegmentJob:
         process, self._process = self._process, None
         if process is None:
             return
-        if process.returncode is None:
-            with contextlib.suppress(ProcessLookupError):
-                # SIGKILL, not SIGTERM: ffmpeg would finalize and list the
-                # half-written segment as complete.
-                process.kill()
-            await process.wait()
+        # SIGKILL, not SIGTERM: ffmpeg would finalize and list the
+        # half-written segment as complete.
+        await kill(process)
         self._paused = False
         self._wake_all()
 

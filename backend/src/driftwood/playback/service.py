@@ -35,7 +35,7 @@ from driftwood.playback.policy import (
     video_problem,
 )
 from driftwood.playback.probe import MediaProbe, find_keyframes, probe_file
-from driftwood.playback.process import input_args, spawn
+from driftwood.playback.process import configure_sandbox, input_args, kill, spawn
 from driftwood.playback.schemas import (
     PlaybackAudioTrack,
     PlaybackOffer,
@@ -162,6 +162,7 @@ class PlaybackService:
     def __init__(self, settings: PlaybackSettings, library: LibrarySettings) -> None:
         self.settings = settings
         self.library = library
+        configure_sandbox(settings.sandbox)
         self._sessions: dict[str, _Session] = {}
         self._indexing: dict[tuple[int, int], asyncio.Task[list[float]]] = {}
         self._extracting: dict[Path, asyncio.Task[None]] = {}
@@ -596,7 +597,7 @@ class PlaybackService:
         outputs = embedded_command(session.subtitles, partial)
         try:
             if outputs:
-                await self._run_ffmpeg([*command, *outputs])
+                await self._run_ffmpeg([*command, *outputs], [session.path], partial)
             for track in session.subtitles:
                 if track.sidecar is None:
                     continue
@@ -605,7 +606,7 @@ class PlaybackService:
                     for args in await asyncio.to_thread(
                         sidecar_commands, self.settings.ffmpeg, track, partial
                     ):
-                        await self._run_ffmpeg(args)
+                        await self._run_ffmpeg(args, [], partial)
                 except (OSError, PlaybackError) as exc:
                     log.warning("Skipping subtitle file %s: %s", track.sidecar.name, exc)
             (partial / ".complete").touch()
@@ -616,20 +617,18 @@ class PlaybackService:
             raise
 
     @staticmethod
-    async def _run_ffmpeg(args: list[str]) -> None:
-        process = await spawn(args)
+    async def _run_ffmpeg(args: list[str], reads: list[Path], directory: Path) -> None:
+        """Run an extraction reading `reads` (and what's in `directory`), writing to `directory`."""
+        process = await spawn(args, reads=reads, writes=[directory])
         try:
             _, stderr = await asyncio.wait_for(
                 process.communicate(), timeout=_EXTRACTION_TIMEOUT_SECONDS
             )
         except TimeoutError:
-            process.kill()
-            await process.wait()
+            await kill(process)
             raise PlaybackError(504, "Timed out extracting subtitles.") from None
         except BaseException:
-            if process.returncode is None:
-                process.kill()
-                await process.wait()
+            await kill(process)
             raise
         if process.returncode:
             lines = stderr.decode(errors="replace").strip().splitlines()

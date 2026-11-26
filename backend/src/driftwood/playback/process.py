@@ -9,6 +9,14 @@ parses hostile input. To keep a bug in one of ffmpeg's parsers from reaching far
   fails on any it may not use), so it only gets the protocol and demuxer lists.
 - Children start with a bare environment (no secrets passed in as variables), no
   core dumps, and caps on the memory they use and the size of any file they write.
+- Where bubblewrap works, each run is sandboxed: no network, the system read-only,
+  and of everything else only the files it reads (read-only) and the directory it
+  writes to. A parser bug then can't reach the database, the secrets, the library,
+  or anything on the network. With `sandbox="auto"` (the default), a host where
+  bwrap can't run ffmpeg runs it unsandboxed, with a warning.
+
+Every child leads its own process group, which the sandbox's processes share, so
+signals go to the group (`send`, `kill`).
 
 Segmenting runs are paused with SIGSTOP while the player has enough buffered.
 If the server dies without stopping them (a crash, SIGKILL, an OOM kill) a
@@ -17,14 +25,22 @@ Linux the kernel kills the child when its parent goes away.
 """
 
 import asyncio
+import contextlib
 import ctypes
+import logging
 import os
+import shutil
 import signal
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
+from typing import Literal
 
 from driftwood.playback.errors import PlaybackError
+
+log = logging.getLogger(__name__)
+
+type SandboxMode = Literal["auto", "bwrap", "off"]
 
 _PR_SET_PDEATHSIG = 1
 _BACKGROUND_NICENESS = 10
@@ -127,26 +143,159 @@ def _child_setup(niceness: int = 0) -> Callable[[], None] | None:
 _SETUP = _child_setup()
 _BACKGROUND_SETUP = _child_setup(_BACKGROUND_NICENESS)
 
+# The system, read-only: enough for a distribution's ffmpeg and the libraries it links.
+_SYSTEM_DIRECTORIES = ("/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32")
+_SYSTEM_FILES = ("/etc/ld.so.cache", "/etc/ld.so.conf", "/etc/ld.so.conf.d", "/etc/alternatives")
+_SANDBOX_CHECK_SECONDS = 30
+
+
+class _Sandbox:
+    def __init__(self) -> None:
+        self.mode: SandboxMode = "auto"
+        self.problems: dict[str, str | None] = {}
+        """Per executable: None when it runs sandboxed, else why it can't. (Two runs
+        starting at once may both check; that only costs a second `-version`.)"""
+
+
+_sandbox = _Sandbox()
+
+
+def configure_sandbox(mode: SandboxMode) -> None:
+    """`auto` sandboxes where bwrap can, `bwrap` refuses to run otherwise, `off` never does."""
+    global _sandbox
+    _sandbox = _Sandbox()
+    _sandbox.mode = mode
+
+
+def _resolve(executable: str) -> str | None:
+    found = shutil.which(executable, path=_environment()["PATH"])
+    return os.path.realpath(found) if found else None
+
+
+def _sandbox_args(
+    bwrap: str, executable: str, reads: Iterable[Path], writes: Iterable[Path]
+) -> list[str]:
+    args = [bwrap, "--unshare-all", "--die-with-parent", "--cap-drop", "ALL"]
+    args += ["--ro-bind", "/usr", "/usr"]
+    for directory in _SYSTEM_DIRECTORIES:
+        if os.path.islink(directory):
+            args += ["--symlink", os.readlink(directory), directory]
+        elif os.path.isdir(directory):
+            args += ["--ro-bind", directory, directory]
+    for path in _SYSTEM_FILES:
+        args += ["--ro-bind-try", path, path]
+    if not executable.startswith("/usr/"):
+        # An ffmpeg of its own (a static build, jellyfin-ffmpeg in /opt, ...).
+        home = os.path.dirname(executable)
+        args += ["--ro-bind", home, home]
+    args += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"]
+    for directory in writes:
+        path = os.path.abspath(directory)
+        args += ["--bind", path, path]
+    for file in reads:
+        path = os.path.abspath(file)
+        args += ["--ro-bind", path, path]
+    return [*args, "--chdir", "/", "--", executable]
+
+
+async def _check(bwrap: str, executable: str) -> str | None:
+    """Why `executable` can't run in the sandbox, or None when it can."""
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *_sandbox_args(bwrap, executable, (), ()),
+            "-version",
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+            env=_environment(),
+        )
+    except OSError as exc:
+        return str(exc)
+    try:
+        _, stderr = await asyncio.wait_for(process.communicate(), _SANDBOX_CHECK_SECONDS)
+    except TimeoutError:
+        process.kill()
+        await process.wait()
+        return "timed out"
+    if process.returncode:
+        lines = stderr.decode(errors="replace").strip().splitlines()
+        return lines[-1] if lines else f"exit code {process.returncode}"
+    return None
+
+
+async def sandbox_command(
+    args: list[str], reads: Iterable[Path] = (), writes: Iterable[Path] = ()
+) -> list[str]:
+    """`args` wrapped in the sandbox, or as they are where it's off or can't work."""
+    sandbox = _sandbox
+    if sandbox.mode == "off":
+        return args
+    bwrap = _resolve("bwrap")
+    executable = _resolve(args[0])
+    if bwrap is None or executable is None:
+        problem = "bwrap isn't installed" if bwrap is None else f"{args[0]} isn't installed"
+    else:
+        if executable not in sandbox.problems:
+            problem = await _check(bwrap, executable)
+            sandbox.problems[executable] = problem
+            if problem is None:
+                log.info("Running %s sandboxed with bwrap", executable)
+            elif sandbox.mode == "auto":
+                log.warning(
+                    "%s can't run sandboxed (%s); running it unsandboxed. Fix bwrap or set "
+                    "DRIFTWOOD_PLAYBACK__SANDBOX=off",
+                    executable,
+                    problem,
+                )
+        problem = sandbox.problems[executable]
+        if problem is None:
+            assert executable is not None and bwrap is not None
+            return [*_sandbox_args(bwrap, executable, reads, writes), *args[1:]]
+    if sandbox.mode == "bwrap":
+        raise PlaybackError(503, f"Could not sandbox {args[0]}: {problem}")
+    return args
+
 
 async def spawn(
     args: list[str],
     *,
+    reads: Iterable[Path] = (),
+    writes: Iterable[Path] = (),
     stdout: int = asyncio.subprocess.DEVNULL,
     stderr: int = asyncio.subprocess.PIPE,
     background: bool = False,
 ) -> asyncio.subprocess.Process:
     """Start ffmpeg or ffprobe (`args[0]`) under the limits above.
 
-    `background` is for work nobody waits on directly: it yields the CPU to playback."""
+    Sandboxed, it sees only the files in `reads` and may only write in the
+    (existing) directories in `writes`. `background` is for work nobody waits on
+    directly: it yields the CPU to playback."""
+    reads, writes = list(reads), list(writes)
+    command = await sandbox_command(args, reads, writes)
     setup = _BACKGROUND_SETUP if background else _SETUP
     try:
         return await asyncio.create_subprocess_exec(
-            *args,
+            *command,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=stdout,
             stderr=stderr,
             env=_environment(),
+            # Its own process group (for `send`), and no controlling terminal to write to.
+            start_new_session=True,
             **({"preexec_fn": setup} if setup else {}),
         )
     except OSError as exc:
         raise PlaybackError(503, f"Could not run {args[0]}: {exc}") from exc
+
+
+def send(process: asyncio.subprocess.Process, signal_number: int) -> None:
+    """Signal the child and everything it started (in the sandbox: ffmpeg itself)."""
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(process.pid, signal_number)
+
+
+async def kill(process: asyncio.subprocess.Process) -> None:
+    """Kill the child's whole group, and wait for the child."""
+    if process.returncode is None:
+        send(process, signal.SIGKILL)
+    await process.wait()
