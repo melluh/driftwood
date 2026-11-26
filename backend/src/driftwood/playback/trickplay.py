@@ -20,6 +20,8 @@ import struct
 from dataclasses import dataclass
 from pathlib import Path
 
+from driftwood.playback.paths import within
+
 _LAYOUT = re.compile(r"^(\d+) - (\d+)x(\d+)$")
 MARKER = ".driftwood-partial"
 """In a layout directory whose sheets are still being made."""
@@ -47,7 +49,7 @@ class Trickplay:
         if not 0 <= index < self.sheets:
             return None
         path = self.directory / f"{index}.jpg"
-        return path if path.is_file() else None
+        return path if path.is_file() and within(path, self.directory) else None
 
 
 def jpeg_size(path: Path) -> tuple[int, int] | None:
@@ -93,7 +95,7 @@ def thumbnail_count(duration: float, interval: float) -> int:
 def _sheet_count(directory: Path) -> int:
     """How many sheets there are, counting 0.jpg, 1.jpg, ... until one is missing."""
     count = 0
-    while (directory / f"{count}.jpg").is_file():
+    while (sheet := directory / f"{count}.jpg").is_file() and within(sheet, directory):
         count += 1
     return count
 
@@ -107,7 +109,9 @@ def find_trickplay(video: Path, duration: float, interval: float) -> Trickplay |
         layouts = [
             (int(match[1]), int(match[2]), int(match[3]), entry)
             for entry in root.iterdir()
-            if entry.is_dir() and (match := _LAYOUT.match(entry.name))
+            if entry.is_dir()
+            and (match := _LAYOUT.match(entry.name))
+            and within(entry, video.parent)
         ]
     except OSError:
         return None

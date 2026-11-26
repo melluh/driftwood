@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from driftwood.playback.paths import within
 from driftwood.playback.process import input_args
 
 TEXT_CODECS = {"subrip", "webvtt", "mov_text", "text"}
@@ -159,7 +160,8 @@ def _small_enough(path: Path) -> bool:
 def sidecar_tracks(video: Path, first_id: int) -> list[SubtitleTrack]:
     """Subtitle files named after the video: `Movie.srt`, `Movie.eng.srt`, `Movie.en.sdh.srt`.
 
-    At most `MAX_SIDECARS` of them, each of a size real subtitles have."""
+    At most `MAX_SIDECARS` of them, each of a size real subtitles have, and none
+    that is a symlink to outside the video's folder."""
     prefix = video.stem + "."
     try:
         candidates = sorted(
@@ -169,6 +171,7 @@ def sidecar_tracks(video: Path, first_id: int) -> list[SubtitleTrack]:
                 if entry.name.startswith(prefix)
                 and entry.suffix.lower() in _SIDECAR_FORMATS
                 and entry.is_file()
+                and within(entry, video.parent)
                 and _small_enough(entry)
             ),
             key=lambda entry: entry.name.casefold(),

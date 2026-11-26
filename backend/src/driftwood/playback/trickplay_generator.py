@@ -38,6 +38,7 @@ from typing import Any
 
 from driftwood.config import PlaybackSettings
 from driftwood.playback.errors import PlaybackError
+from driftwood.playback.paths import within
 from driftwood.playback.policy import PLAYABLE_SUFFIXES
 from driftwood.playback.probe import MediaProbe, probe_file
 from driftwood.playback.process import VIDEO_DECODERS, input_args, kill, spawn
@@ -305,6 +306,10 @@ class TrickplayGenerator:
             "height": height,
         }
         directory = layout_directory(video, width, self.columns, self.rows)
+        for existing in (directory.parent, directory):
+            if (existing.exists() or existing.is_symlink()) and not within(existing, video.parent):
+                # Sheets written there, or a stale run cleared away, would be elsewhere.
+                raise PlaybackError(409, f"{existing.name} leads outside the video's folder.")
         marker = directory / MARKER
         if directory.exists():
             if not marker.is_file():
@@ -324,7 +329,11 @@ class TrickplayGenerator:
             leftover.unlink(missing_ok=True)
 
         sheets = range(layout.sheets)
-        ready = {index for index in sheets if (directory / f"{index}.jpg").is_file()}
+        ready = {
+            index
+            for index in sheets
+            if (sheet := directory / f"{index}.jpg").is_file() and within(sheet, directory)
+        }
         return TrickplayJob(
             video=video,
             directory=directory,

@@ -850,3 +850,59 @@ def test_matroska_cues_are_read_within_bounds(tmp_path: Path) -> None:
     # A 400-byte "integer" isn't one, nor a time that turns into seconds.
     overlong = [_cue_point(b"\xff" * 400)]
     assert read_keyframes(_matroska(tmp_path / "overlong.mkv", overlong)) is None
+
+
+def test_sidecars_may_not_lead_out_of_the_videos_folder(tmp_path: Path) -> None:
+    folder = tmp_path / "Movie [tmdbid-1]"
+    folder.mkdir()
+    video = folder / "Movie.mkv"
+    video.touch()
+    secret = tmp_path / "secret.sup"
+    secret.write_bytes(b"not for viewers")
+    (folder / "Movie.ger.sup").symlink_to(secret)
+    (folder / "Other.en.srt").write_text("1\n00:00:01,000 --> 00:00:02,000\nHi\n")
+    (folder / "Movie.en.srt").symlink_to(folder / "Other.en.srt")  # stays inside: fine
+    assert [track.language for track in sidecar_tracks(video, 0)] == ["en"]
+
+
+@needs_ffmpeg
+def test_trickplay_may_not_lead_out_of_the_videos_folder(tmp_path: Path) -> None:
+    elsewhere = tmp_path / "elsewhere" / "32 - 2x2"
+    elsewhere.mkdir(parents=True)
+    for index in range(2):
+        _ffmpeg("-f", "lavfi", "-i", "color=c=gray:s=64x36", "-frames:v", "1",
+                str(elsewhere / f"{index}.jpg"))  # fmt: skip
+    folder = tmp_path / "Movie"
+    folder.mkdir()
+    video = folder / "Movie.mkv"
+    # A symlinked layout folder,
+    (folder / "Movie.trickplay").mkdir()
+    (folder / "Movie.trickplay" / "32 - 2x2").symlink_to(elsewhere)
+    assert find_trickplay(video, 45, 10) is None
+    # and a symlinked sheet: the set ends before it.
+    (folder / "Movie.trickplay" / "32 - 2x2").unlink()
+    layout = folder / "Movie.trickplay" / "32 - 2x2"
+    layout.mkdir()
+    shutil.copyfile(elsewhere / "0.jpg", layout / "0.jpg")
+    (layout / "1.jpg").symlink_to(elsewhere / "1.jpg")
+    trickplay = find_trickplay(video, 45, 10)
+    assert trickplay is not None and trickplay.sheets == 1
+    assert trickplay.sheet(1) is None
+
+
+@needs_ffmpeg
+async def test_thumbnails_are_not_written_through_a_symlinked_folder(media, tmp_path) -> None:
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    folder = tmp_path / "Movie"
+    folder.mkdir()
+    video = folder / "Movie.mkv"
+    shutil.copyfile(media["mkv"], video)
+    (folder / "Movie.trickplay").symlink_to(elsewhere)
+    generator = TrickplayGenerator(PlaybackSettings(trickplay_width=64))
+    try:
+        probe = await probe_file("ffprobe", video)
+        assert await generator.submit(video, probe, Priority.imported) is None
+    finally:
+        await generator.shutdown()
+    assert list(elsewhere.iterdir()) == []
