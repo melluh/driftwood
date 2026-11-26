@@ -18,6 +18,7 @@ export type {
 	AuthConfig,
 	CastMember,
 	CurrentUser,
+	DownloadStatus,
 	Genre,
 	LibraryAvailability,
 	LibraryEpisode,

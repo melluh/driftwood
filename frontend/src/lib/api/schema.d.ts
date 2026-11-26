@@ -212,7 +212,7 @@ export interface paths {
 		 * @description Searches the indexers and picks the release to grab for watching right
 		 *     away (a modest 1080p encode when available), with the best release of
 		 *     every other quality slot as manual upgrades. Series default to S01E01.
-		 *     Nothing is downloaded yet.
+		 *     `POST /api/downloads` grabs one.
 		 */
 		get: operations['media_watch_api_media__media_type___media_id__watch_get'];
 		put?: never;
@@ -480,6 +480,56 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/downloads': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Active Download
+		 * @description The download in progress for a title (series: an episode, default S01E01), or null.
+		 */
+		get: operations['active_download_api_downloads_get'];
+		put?: never;
+		/**
+		 * Start Download
+		 * @description Fetch a release's .torrent from its indexer and add it to qBittorrent. Once
+		 *     complete it is linked into the library and `file_id` says what to play.
+		 *     Asking again for a release that's still downloading returns that download.
+		 */
+		post: operations['start_download_api_downloads_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/downloads/{download_id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/**
+		 * Download Status
+		 * @description Progress, speed and ETA, refreshed from qBittorrent every couple of seconds.
+		 */
+		get: operations['download_status_api_downloads__download_id__get'];
+		put?: never;
+		post?: never;
+		/**
+		 * Cancel Download
+		 * @description Stop the download and delete what qBittorrent downloaded so far.
+		 */
+		delete: operations['cancel_download_api_downloads__download_id__delete'];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -512,6 +562,82 @@ export interface components {
 			email: string | null;
 			/** Avatar Url */
 			avatar_url: string | null;
+		};
+		/** DownloadStatus */
+		DownloadStatus: {
+			/** Id */
+			id: number;
+			/**
+			 * State
+			 * @enum {string}
+			 */
+			state: 'downloading' | 'importing' | 'completed' | 'failed' | 'cancelled';
+			media_type: components['schemas']['MediaType'];
+			/** Media Id */
+			media_id: number;
+			/** Season */
+			season: number | null;
+			/** Episode */
+			episode: number | null;
+			/** Release Title */
+			release_title: string;
+			/** Activity */
+			activity:
+				| (
+						| 'connecting'
+						| 'downloading'
+						| 'stalled'
+						| 'paused'
+						| 'checking'
+						| 'complete'
+						| 'unknown'
+				  )
+				| null;
+			/**
+			 * Progress
+			 * @default 0
+			 */
+			progress: number;
+			/** Size */
+			size: number | null;
+			/**
+			 * Downloaded
+			 * @default 0
+			 */
+			downloaded: number;
+			/**
+			 * Download Speed
+			 * @default 0
+			 */
+			download_speed: number;
+			/** Eta Seconds */
+			eta_seconds: number | null;
+			/**
+			 * Seeds
+			 * @default 0
+			 */
+			seeds: number;
+			/**
+			 * Peers
+			 * @default 0
+			 */
+			peers: number;
+			/** Error */
+			error: string | null;
+			/**
+			 * Can Cancel
+			 * @default false
+			 */
+			can_cancel: boolean;
+			/** File Id */
+			file_id: number | null;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/** Completed At */
+			completed_at: string | null;
 		};
 		/** Genre */
 		Genre: {
@@ -933,6 +1059,20 @@ export interface components {
 			/** Entries */
 			entries: number;
 		};
+		/** StartDownload */
+		StartDownload: {
+			media_type: components['schemas']['MediaType'];
+			/** Media Id */
+			media_id: number;
+			/** Season */
+			season?: number | null;
+			/** Episode */
+			episode?: number | null;
+			/** Indexer */
+			indexer: string;
+			/** Guid */
+			guid: string;
+		};
 		/**
 		 * SubtitleStatus
 		 * @enum {string}
@@ -1026,6 +1166,11 @@ export interface components {
 			nfos_checked: number;
 			/** Rejected */
 			rejected: components['schemas']['Rejected'][];
+			/**
+			 * Can Download
+			 * @default false
+			 */
+			can_download: boolean;
 		};
 	};
 	responses: never;
@@ -1037,6 +1182,7 @@ export interface components {
 export type AuthConfig = components['schemas']['AuthConfig'];
 export type CastMember = components['schemas']['CastMember'];
 export type CurrentUser = components['schemas']['CurrentUser'];
+export type DownloadStatus = components['schemas']['DownloadStatus'];
 export type Genre = components['schemas']['Genre'];
 export type HttpValidationError = components['schemas']['HTTPValidationError'];
 export type HomePage = components['schemas']['HomePage'];
@@ -1066,6 +1212,7 @@ export type ReleaseNfo = components['schemas']['ReleaseNfo'];
 export type ReleaseSearch = components['schemas']['ReleaseSearch'];
 export type ScoreFactor = components['schemas']['ScoreFactor'];
 export type SearchStatus = components['schemas']['SearchStatus'];
+export type StartDownload = components['schemas']['StartDownload'];
 export type SubtitleStatus = components['schemas']['SubtitleStatus'];
 export type SubtitleTrack = components['schemas']['SubtitleTrack'];
 export type TorrentRelease = components['schemas']['TorrentRelease'];
@@ -1802,6 +1949,135 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	active_download_api_downloads_get: {
+		parameters: {
+			query: {
+				media_type: components['schemas']['MediaType'];
+				media_id: number;
+				season?: number | null;
+				episode?: number | null;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DownloadStatus'] | null;
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	start_download_api_downloads_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['StartDownload'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			201: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DownloadStatus'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	download_status_api_downloads__download_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				download_id: number;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DownloadStatus'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	cancel_download_api_downloads__download_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				download_id: number;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DownloadStatus'];
+				};
 			};
 			/** @description Validation Error */
 			422: {

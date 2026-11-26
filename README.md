@@ -90,8 +90,9 @@ that calls it.
 ## Watch: picking a release
 
 The Watch button opens a full-screen watch view at `/{movie|tv}/{id}/watch`. It searches the
-indexers (`GET /api/media/{type}/{id}/watch`) and shows the release it would grab. Nothing is
-downloaded yet.
+indexers (`GET /api/media/{type}/{id}/watch`) and, with a download client configured, starts
+downloading the pick right away (see [Downloading](#downloading)); without one it shows the release
+it would grab.
 
 Selection (`backend/src/driftwood/selection/`) is ported from MediaManager's slot scoring:
 
@@ -138,6 +139,50 @@ Slots, the watch order, release group tiers, the HDR ladder, the wanted subtitle
 the penalties are configurable under `DRIFTWOOD_SELECTION__*` (see `selection/config.py`), e.g.
 `DRIFTWOOD_SELECTION__SUBTITLE_LANGUAGES='["en", "nl"]'`. Names and ISO codes both work; an empty
 list turns subtitle checks off.
+
+## Downloading
+
+Watch hands the picked release to qBittorrent straight away, shows its progress and time left, and
+plays it once it's in the library. (Playing while it downloads isn't supported yet, nor picking
+another release.) The time left only appears once it's trustworthy: the speed is averaged over the
+last 15 s of progress, and the estimate shows once its predicted finish times have agreed (within
+20%) for about 8 s, or after half a minute regardless. Enable it in `backend/.env`:
+
+```sh
+DRIFTWOOD_DOWNLOADS__QBITTORRENT__URL=http://localhost:8080
+# qBittorrent 5.2+: Tools → Options → WebUI → API Key → Generate. Leave it out when
+# qBittorrent lets Driftwood's address in without authentication.
+DRIFTWOOD_DOWNLOADS__QBITTORRENT__API_KEY=qbt_...
+# If qBittorrent runs in a container or elsewhere, map its paths to Driftwood's:
+# DRIFTWOOD_DOWNLOADS__QBITTORRENT__PATH_MAPPINGS='[{"remote":"/downloads","local":"/srv/torrents"}]'
+```
+
+- The .torrent is fetched through the indexer's session and added to qBittorrent in the
+  `driftwood` category (`__CATEGORY`, created if missing; `__SAVE_PATH` overrides where it goes).
+  Asking twice for the same release returns the running download.
+- One loop polls qBittorrent every 2 s (`DRIFTWOOD_DOWNLOADS__POLL_INTERVAL_SECONDS`) for all
+  active downloads; the watch screen reads those numbers every second. Downloads are stored in the
+  database, so they survive restarts, and reopening Watch on that title shows the progress again.
+- When the torrent is complete, its video goes into the first library root of the right kind
+  (`DRIFTWOOD_DOWNLOADS__MOVIES_ROOT` / `__TV_ROOT` pick one by name), named the Jellyfin way with
+  the quality as a version label:
+  `Dune (2021) [tmdbid-438631]/Dune (2021) [tmdbid-438631] - 1080p WEB-DL H.264-FLUX.mkv`, or
+  `The Bear (2022) [tmdbid-136315]/Season 01/The Bear (2022) S01E02 - 1080p WEB-DL HEVC-NTb.mkv`.
+  Samples are skipped; for an episode in a pack, the file for that episode is taken.
+- Subtitle files that come with it (`.srt`, `.ass`, `.ssa`, `.vtt`, `.sup`, `.idx`/`.sub`) are
+  placed next to the video as `<video name>.<language>[.forced|.sdh].<ext>`, reading the language
+  from names like `Movie.eng.srt` or `Subs/2_English.srt`. `DRIFTWOOD_DOWNLOADS__SUBTITLES=false`
+  turns this off.
+- Files are **hardlinked**, so the torrent keeps seeding from the same data without using extra
+  space. That needs the download directory and the library root on one filesystem; otherwise the
+  file is copied (`DRIFTWOOD_DOWNLOADS__FALLBACK=move` moves it instead, which saves space but
+  leaves qBittorrent with missing files). The file appears under its final name only once complete.
+- The new file is scanned into the library straight away and played with the mechanisms below.
+- Cancelling deletes the torrent and its data from qBittorrent, but only below 7% downloaded
+  (`DRIFTWOOD_DOWNLOADS__CANCEL_LIMIT=0.07`): TorrentLeech counts any torrent downloaded 10% or
+  more as a hit and run until it is seeded back to 1:1, so past that it has to finish and seed.
+  The share includes discarded pieces, as the tracker counts them. A torrent removed in qBittorrent,
+  or in its error state, marks the download as failed.
 
 ## Library
 

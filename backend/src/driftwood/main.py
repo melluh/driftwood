@@ -19,6 +19,9 @@ from driftwood.auth.router import (
 from driftwood.auth.router import router as auth_router
 from driftwood.config import IndexersSettings, get_settings
 from driftwood.db import Database
+from driftwood.downloads.qbittorrent import QbittorrentClient
+from driftwood.downloads.router import router as downloads_router
+from driftwood.downloads.service import DownloadService
 from driftwood.indexers import INDEXERS
 from driftwood.indexers.base import Indexer
 from driftwood.indexers.manager import IndexerManager
@@ -92,18 +95,34 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             tmdb, indexers, cache_ttl_seconds=settings.indexers.results_cache_ttl_seconds
         )
         app.state.release_service = release_service
-        app.state.watch_service = WatchService(release_service, settings.selection)
-        index_task = asyncio.create_task(titles.run(), name="title-index")
-        library_task = asyncio.create_task(library_service.run(), name="library")
+        qbittorrent = settings.downloads.qbittorrent
+        download_service = DownloadService(
+            settings.downloads,
+            settings.library,
+            database,
+            releases=release_service,
+            indexers=indexers,
+            library=library_service,
+            client=QbittorrentClient(qbittorrent) if qbittorrent else None,
+        )
+        app.state.download_service = download_service
+        app.state.watch_service = WatchService(
+            release_service, settings.selection, can_download=download_service.enabled
+        )
+        tasks = [
+            asyncio.create_task(titles.run(), name="title-index"),
+            asyncio.create_task(library_service.run(), name="library"),
+            asyncio.create_task(download_service.run(), name="downloads"),
+        ]
         try:
             yield
         finally:
-            index_task.cancel()
-            library_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await index_task
-            with contextlib.suppress(asyncio.CancelledError):
-                await library_task
+            for task in tasks:
+                task.cancel()
+            for task in tasks:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+            await download_service.shutdown()
             await library_service.shutdown()
             await playback_service.shutdown()
             await indexers.aclose()
@@ -134,3 +153,4 @@ app.include_router(media_router, prefix="/api", dependencies=[Depends(require_us
 app.include_router(my_list_router, prefix="/api", dependencies=[Depends(require_user)])
 app.include_router(library_router, prefix="/api", dependencies=[Depends(require_user)])
 app.include_router(playback_router, prefix="/api", dependencies=[Depends(require_user)])
+app.include_router(downloads_router, prefix="/api", dependencies=[Depends(require_user)])

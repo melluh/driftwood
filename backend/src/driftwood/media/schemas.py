@@ -199,6 +199,8 @@ class WatchPlan(Schema):
     nfos_checked: int
     """NFOs fetched to verify subtitles."""
     rejected: list[Rejected]
+    can_download: bool = False
+    """Whether a download client (qBittorrent) is configured to grab the pick."""
 
 
 class ReleaseNfo(Schema):

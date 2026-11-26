@@ -66,6 +66,14 @@ class IndexerManager:
                     return await indexer.fetch_nfo(guid)
         raise IndexerError(f"no enabled indexer {indexer_id!r}")
 
+    async def download(self, release: Release) -> bytes:
+        """The release's .torrent from the indexer that found it. Raises `IndexerError`."""
+        for indexer in self.indexers:
+            if indexer.id == release.indexer_id:
+                async with asyncio.timeout(self.timeout_seconds):
+                    return await indexer.download(release)
+        raise IndexerError(f"no enabled indexer {release.indexer_id!r}")
+
     async def aclose(self) -> None:
         for indexer in self.indexers:
             with contextlib.suppress(Exception):

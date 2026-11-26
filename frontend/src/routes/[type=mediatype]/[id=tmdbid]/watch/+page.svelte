@@ -3,11 +3,13 @@
 	import { untrack } from 'svelte';
 	import {
 		api,
+		type DownloadStatus,
 		type PlaybackOffer,
 		type RankedRelease,
 		type Rejected,
 		type WatchPlan
 	} from '#lib/api/client.ts';
+	import DownloadProgress from '#lib/components/watch/DownloadProgress.svelte';
 	import PlaybackCurtain from '#lib/components/watch/player/PlaybackCurtain.svelte';
 	import Player from '#lib/components/watch/player/Player.svelte';
 	import SelectedRelease from '#lib/components/watch/SelectedRelease.svelte';
@@ -38,9 +40,12 @@
 		)
 	);
 
-	/** Library playback first; the release search when there's no playable copy. */
-	let phase = $state<'starting' | 'playing' | 'search'>(
-		untrack(() => inLibrary) ? 'starting' : 'search'
+	/**
+	 * Library playback first; otherwise a download in progress (`checking` looks for one), and
+	 * the release search when there's neither.
+	 */
+	let phase = $state<'checking' | 'downloading' | 'starting' | 'playing' | 'search'>(
+		untrack(() => inLibrary) ? 'starting' : 'checking'
 	);
 	/** The player has its first frame up; until then a curtain covers it. */
 	let playerReady = $state(false);
@@ -58,6 +63,12 @@
 	let chosen = $state<RankedRelease | null>(null);
 	let attempt = $state(0);
 
+	let download = $state<DownloadStatus | null>(null);
+	/** The pick is being handed to qBittorrent. */
+	let startingDownload = $state(false);
+	let cancelling = $state(false);
+	let downloadError = $state<string | null>(null);
+
 	const shown = $derived(chosen ?? plan?.pick ?? null);
 	const others = $derived(plan?.options ?? []);
 	/** "9 not the requested episode, 1 too few seeders" */
@@ -72,10 +83,11 @@
 		return typeof detail === 'string' ? detail : null;
 	}
 
-	function search(message: string, retry: boolean) {
+	function search(message: string | null, retry = false) {
 		startToken++;
 		offer = null;
-		notice = { message, retry };
+		download = null;
+		notice = message ? { message, retry } : null;
 		phase = 'search';
 	}
 
@@ -118,6 +130,37 @@
 		}
 	}
 
+	/** Pick up a download that's still running for this title, or search for releases. */
+	async function resumeOrSearch() {
+		const token = ++startToken;
+		offer = null;
+		notice = null;
+		download = null;
+		downloadError = null;
+		phase = 'checking';
+		try {
+			const { data: active } = await api.GET('/api/downloads', {
+				params: {
+					query: {
+						media_type: media.media_type,
+						media_id: media.id,
+						season: data.episode?.season ?? null,
+						episode: data.episode?.episode ?? null
+					}
+				}
+			});
+			if (token !== startToken) return;
+			if (active) {
+				download = active;
+				phase = 'downloading';
+				return;
+			}
+		} catch {
+			if (token !== startToken) return;
+		}
+		phase = 'search';
+	}
+
 	// A new title or episode: play it from the library if it's there.
 	$effect(() => {
 		void [media.media_type, media.id, data.episode?.season, data.episode?.episode];
@@ -126,12 +169,100 @@
 			if (local) {
 				void startLocal();
 			} else {
-				startToken++;
-				offer = null;
-				notice = null;
-				phase = 'search';
+				void resumeOrSearch();
 			}
 		});
+	});
+
+	/** Hand a release to qBittorrent and follow it; false (with `downloadError` set) on failure. */
+	async function startDownload(ranked: RankedRelease): Promise<boolean> {
+		startingDownload = true;
+		downloadError = null;
+		try {
+			const {
+				data: started,
+				error,
+				response
+			} = await api.POST('/api/downloads', {
+				body: {
+					media_type: media.media_type,
+					media_id: media.id,
+					season: data.episode?.season ?? null,
+					episode: data.episode?.episode ?? null,
+					indexer: ranked.release.indexer,
+					guid: ranked.release.guid
+				}
+			});
+			if (started) {
+				startToken++;
+				download = started;
+				notice = null;
+				phase = 'downloading';
+				return true;
+			}
+			downloadError = `Couldn't start the download: ${errorDetail(error) ?? `HTTP ${response.status}`}`;
+		} catch (err) {
+			downloadError = `Couldn't start the download: ${err instanceof Error ? err.message : String(err)}`;
+		} finally {
+			startingDownload = false;
+		}
+		return false;
+	}
+
+	async function cancelDownload() {
+		if (!download) return;
+		cancelling = true;
+		try {
+			const {
+				data: result,
+				error,
+				response
+			} = await api.DELETE('/api/downloads/{download_id}', {
+				params: { path: { download_id: download.id } }
+			});
+			if (result) {
+				close();
+			} else {
+				downloadError = `Couldn't cancel: ${errorDetail(error) ?? `HTTP ${response.status}`}`;
+			}
+		} catch (err) {
+			downloadError = `Couldn't cancel: ${err instanceof Error ? err.message : String(err)}`;
+		} finally {
+			cancelling = false;
+		}
+	}
+
+	// Follow the download; once it's in the library, play it.
+	const downloadId = $derived(phase === 'downloading' ? (download?.id ?? null) : null);
+	$effect(() => {
+		const id = downloadId;
+		if (id == null) return;
+		let stopped = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const poll = async () => {
+			try {
+				const { data: latest } = await api.GET('/api/downloads/{download_id}', {
+					params: { path: { download_id: id } }
+				});
+				if (stopped) return;
+				if (latest) {
+					download = latest;
+					if (latest.state === 'completed' && latest.file_id != null) {
+						void startLocal(latest.file_id, 0, 'Starting playback');
+						return;
+					}
+					if (latest.state === 'failed' || latest.state === 'cancelled') return;
+				}
+			} catch {
+				if (stopped) return;
+			}
+			timer = setTimeout(() => void poll(), 1000);
+		};
+		timer = setTimeout(() => void poll(), 1000);
+		return () => {
+			stopped = true;
+			clearTimeout(timer);
+		};
 	});
 
 	// Stop the server's work when the session is replaced, the page is left, or the tab closes.
@@ -164,9 +295,15 @@
 				params: { path: { media_type, media_id: id }, query: episode ?? {} },
 				signal: controller.signal
 			})
-			.then(({ data: result, response }) => {
+			.then(async ({ data: result, response }) => {
 				if (result) {
 					plan = result;
+					// Grab the pick straight away, still under "Checking for torrents"; the release
+					// card only shows when that can't happen (or fails).
+					if (result.pick && result.can_download) {
+						const started = await startDownload(result.pick);
+						if (started || controller.signal.aborted) return;
+					}
 					status = 'ready';
 				} else {
 					errorMessage = `The search failed (HTTP ${response.status}).`;
@@ -200,10 +337,30 @@
 	year={media.year}
 	detail={episodeLabel}
 	backdropPath={media.backdrop_path}
-	immersive={phase !== 'search'}
+	immersive={phase === 'starting' || phase === 'playing'}
 	onclose={close}
 >
-	{#if phase !== 'search'}
+	{#if phase === 'checking'}
+		<!-- Looking for a download in progress: a moment, so nothing to show. -->
+	{:else if phase === 'downloading' && download}
+		{#if download.state === 'failed' || download.state === 'cancelled'}
+			<div class="message">
+				<Icon name="alert" size="2rem" />
+				<h1>
+					{download.state === 'failed' ? "The download didn't finish" : 'Download cancelled'}
+				</h1>
+				{#if download.error}<p>{download.error}</p>{/if}
+				<Button onclick={() => search(null)}>Try again</Button>
+			</div>
+		{:else}
+			{#key download.id}
+				<DownloadProgress {download} {cancelling} oncancel={() => void cancelDownload()} />
+			{/key}
+			{#if downloadError}
+				<p class="failure"><Icon name="alert" /> {downloadError}</p>
+			{/if}
+		{/if}
+	{:else if phase !== 'search'}
 		{#if phase === 'playing' && offer?.session}
 			{#key offer.session.id}
 				<Player
@@ -257,8 +414,14 @@
 					ranked={shown}
 					isRecommended={!chosen || chosen.release.guid === plan.pick?.release.guid}
 					wantedSubtitles={plan.subtitle_languages}
+					canDownload={plan.can_download}
+					starting={startingDownload}
+					ondownload={() => shown && void startDownload(shown)}
 					onreset={() => (chosen = null)}
 				/>
+				{#if downloadError}
+					<p class="failure"><Icon name="alert" /> {downloadError}</p>
+				{/if}
 			{:else}
 				<div class="message">
 					<Icon name="info" size="2rem" />

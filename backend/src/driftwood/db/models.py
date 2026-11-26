@@ -125,6 +125,51 @@ class MediaFileLink(Base):
     file: Mapped[MediaFile] = relationship(back_populates="links")
 
 
+class DownloadState(StrEnum):
+    downloading = "downloading"
+    importing = "importing"
+    """Complete in qBittorrent; being linked into the library."""
+    completed = "completed"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
+ACTIVE_DOWNLOAD_STATES = (DownloadState.downloading.value, DownloadState.importing.value)
+
+
+class Download(Base):
+    """A torrent Driftwood handed to qBittorrent to watch a title (or episode)."""
+
+    __tablename__ = "downloads"
+    __table_args__ = (
+        Index("ix_downloads_state", "state"),
+        Index("ix_downloads_media_type_media_id", "media_type", "media_id"),
+        Index("ix_downloads_infohash", "infohash"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    media_type: Mapped[str] = mapped_column(String(8))
+    media_id: Mapped[int]
+    season: Mapped[int | None]
+    episode: Mapped[int | None]
+    title: Mapped[str] = mapped_column(String(512))
+    """The TMDB title, used to name the imported files."""
+    year: Mapped[int | None]
+    indexer: Mapped[str] = mapped_column(String(64))
+    guid: Mapped[str] = mapped_column(String(128))
+    release_title: Mapped[str] = mapped_column(String(1024))
+    infohash: Mapped[str] = mapped_column(String(64))
+    size: Mapped[int | None] = mapped_column(BigInteger)
+    state: Mapped[str] = mapped_column(String(16))
+    error: Mapped[str | None] = mapped_column(String(2048))
+    file_id: Mapped[int | None] = mapped_column(ForeignKey("media_files.id", ondelete="SET NULL"))
+    """The imported library file, once completed."""
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+
 class MyListItem(Base):
     """A title a user saved to "My list".
 

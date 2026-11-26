@@ -143,6 +143,51 @@ class PlaybackSettings(BaseModel):
     count doesn't fit this interval are ignored."""
 
 
+class PathMapping(BaseModel):
+    remote: str
+    """A path prefix as qBittorrent reports it, e.g. `/downloads` inside its container."""
+    local: Path
+    """Where Driftwood sees that same directory."""
+
+
+class QbittorrentSettings(BaseModel):
+    url: str
+    """WebUI address, e.g. `http://localhost:8080`."""
+    api_key: str = ""
+    """A WebUI API key (`qbt_...`, qBittorrent 5.2+: Options → WebUI → API Key → Generate),
+    sent as a Bearer token. Leave empty when qBittorrent skips authentication for Driftwood's
+    address."""
+    category: str = "driftwood"
+    """Every torrent Driftwood adds gets this category (created when missing)."""
+    save_path: str | None = None
+    """Download directory as qBittorrent sees it; None uses the category's or qBittorrent's
+    default."""
+    path_mappings: list[PathMapping] = Field(default_factory=list)
+    """Translate qBittorrent's paths when it runs elsewhere (a container, another host)."""
+    timeout_seconds: float = 15
+
+
+class DownloadsSettings(BaseModel):
+    qbittorrent: QbittorrentSettings | None = None
+    """Set `DRIFTWOOD_DOWNLOADS__QBITTORRENT__URL` (and credentials) to enable downloading."""
+    poll_interval_seconds: float = Field(default=2, gt=0)
+    """How often active torrents are checked for completion."""
+    subtitles: bool = True
+    """Import subtitle files that come with the video (`.srt`, `.ass`, ...) next to it."""
+    fallback: Literal["copy", "move"] = "copy"
+    """When a hardlink isn't possible (another filesystem): copy, which keeps the torrent
+    seeding, or move, which saves space but leaves qBittorrent with missing files."""
+    cancel_limit: float = Field(default=0.07, ge=0, le=1)
+    """Share of a torrent (0..1) beyond which it can no longer be cancelled. TorrentLeech
+    counts a hit and run for any torrent downloaded 10% or more that isn't seeded back to 1:1,
+    so cancelling past that only leaves data that must be seeded anyway; the margin covers
+    what arrives between the check and the removal."""
+    movies_root: str | None = None
+    """Library root (by name) that movies go to; the first `movies` root when unset."""
+    tv_root: str | None = None
+    """Library root (by name) that episodes go to; the first `tv` root when unset."""
+
+
 class AuthSettings(BaseModel):
     issuer_url: str = ""
     """OpenID Connect issuer, e.g. `https://accounts.google.com`. Its
@@ -195,6 +240,7 @@ class Settings(BaseSettings):
     auth: AuthSettings = AuthSettings()
     library: LibrarySettings = LibrarySettings()
     playback: PlaybackSettings = PlaybackSettings()
+    downloads: DownloadsSettings = DownloadsSettings()
 
 
 @lru_cache

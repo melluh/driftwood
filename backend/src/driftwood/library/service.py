@@ -2,12 +2,13 @@ import asyncio
 import logging
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from driftwood.config import LibrarySettings
+from driftwood.config import LibraryRoot, LibrarySettings
 from driftwood.db import Database
 from driftwood.db.models import MediaFile, MediaFileLink, MediaFileState, utcnow
 from driftwood.media.schemas import MediaType
@@ -87,6 +88,24 @@ class LibraryService:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return True
+
+    async def add_file(self, root: LibraryRoot, path: Path) -> int | None:
+        """
+        Scan one new file in `root` right away (after any running scan) and
+        return its id, or None when it didn't match a title.
+        """
+        async with self._lock:
+            await self.scanner.scan_path(path)
+        await self._refresh_files()
+        relative = path.absolute().relative_to(root.path.absolute()).as_posix()
+        async with self.database.sessionmaker() as db:
+            return await db.scalar(
+                select(MediaFile.id).where(
+                    MediaFile.root == root.name,
+                    MediaFile.path == relative,
+                    MediaFile.state == MediaFileState.present.value,
+                )
+            )
 
     async def shutdown(self) -> None:
         """Stop on-demand scans before the database is disposed."""

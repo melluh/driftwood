@@ -111,7 +111,7 @@ async def media_watch(
     Searches the indexers and picks the release to grab for watching right
     away (a modest 1080p encode when available), with the best release of
     every other quality slot as manual upgrades. Series default to S01E01.
-    Nothing is downloaded yet.
+    `POST /api/downloads` grabs one.
     """
     plan = await service.plan(media_type, media_id, season=season, episode=episode)
     if plan is None:

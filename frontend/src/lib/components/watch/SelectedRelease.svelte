@@ -18,6 +18,9 @@
 		ranked,
 		isRecommended,
 		wantedSubtitles,
+		canDownload,
+		starting = false,
+		ondownload,
 		onreset
 	}: {
 		ranked: RankedRelease;
@@ -25,6 +28,11 @@
 		isRecommended: boolean;
 		/** Wanted subtitle languages (ISO codes). */
 		wantedSubtitles: string[];
+		/** A download client is configured. */
+		canDownload: boolean;
+		/** The download is being handed to qBittorrent. */
+		starting?: boolean;
+		ondownload: () => void;
 		onreset: () => void;
 	} = $props();
 
@@ -84,8 +92,13 @@
 	</dl>
 
 	<div class="actions">
-		<Button icon="play" disabled title="Downloading isn't hooked up yet">
-			Download &amp; play
+		<Button
+			icon="download"
+			disabled={!canDownload || starting}
+			title={canDownload ? undefined : 'No download client is configured'}
+			onclick={ondownload}
+		>
+			{starting ? 'Starting download…' : 'Download & play'}
 		</Button>
 		{#if release.details_url}
 			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- external link -->
@@ -97,7 +110,12 @@
 			<button type="button" class="reset" onclick={onreset}>Back to the recommended release</button>
 		{/if}
 	</div>
-	<p class="note">Downloading isn't wired up yet; this is the torrent Driftwood would grab.</p>
+	{#if !canDownload}
+		<p class="note">
+			Set <code>DRIFTWOOD_DOWNLOADS__QBITTORRENT__URL</code> in the backend's <code>.env</code> to download
+			through qBittorrent.
+		</p>
+	{/if}
 
 	<details>
 		<summary>Why this release · score {ranked.score}</summary>
@@ -238,6 +256,12 @@
 	.external:hover,
 	.reset:hover {
 		color: var(--color-accent-strong);
+	}
+
+	.note code {
+		font-size: var(--text-xs);
+		color: var(--color-text);
+		overflow-wrap: anywhere;
 	}
 
 	.note {

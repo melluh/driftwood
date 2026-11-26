@@ -64,9 +64,12 @@ def to_ranked(candidate: Candidate) -> RankedRelease:
 
 
 class WatchService:
-    def __init__(self, releases: ReleaseService, settings: SelectionSettings) -> None:
+    def __init__(
+        self, releases: ReleaseService, settings: SelectionSettings, *, can_download: bool = False
+    ) -> None:
         self.releases = releases
         self.settings = settings
+        self.can_download = can_download
 
     async def plan(
         self,
@@ -128,6 +131,7 @@ class WatchService:
             ],
             subtitle_languages=sorted(wanted_languages(self.settings)),
             nfos_checked=len(nfos),
+            can_download=self.can_download,
         )
 
     async def _nfo_info(
